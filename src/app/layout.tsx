@@ -18,7 +18,11 @@ export const metadata: Metadata = {
     "AI-powered system architecture blueprints and agentic execution plans powered by Groq Llama 3.3 70B.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"
