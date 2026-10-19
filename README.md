@@ -28,7 +28,7 @@ Fresh Computer Science and Information Technology graduates frequently encounter
 * **💡 Architectural Rationale ("Why" Generator):** Provides clear, defensible justifications for each technology choice with one-click **"Copy for Interview"** snippets.
 * **🤖 Agentic Task Separation:** Cleanly divides work modules into **Human Tasks** (architecture, security, verification) and **Agentic AI Prompts** (Cursor / Claude Code boilerplate generation).
 * **⚡ High-Throughput Structured Output:** Uses Vercel AI SDK paired with Google Gemini 2.5 Flash and Zod schemas for type-safe JSON output.
-* **🔍 Concept Explainer & RAG Module (In Progress):** Vector semantic search powered by `pgvector` in Supabase for mastering technical terms (LLMs, APIs, Microservices).
+* **🔍 Concept Explainer & RAG Module:** Vector semantic search powered by `pgvector` in Supabase for mastering technical terms (LLMs, APIs, Microservices).
 * **🎙️ AI Technical Mock Interviewer (Roadmap):** Real-time streaming interview sessions evaluating technical accuracy and English delivery.
 
 ---
@@ -102,7 +102,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 - [x] **Phase 1:** Environment setup, Next.js 14 App Router, Supabase Schema & Auth configuration
 - [x] **Phase 2:** AI Co-Builder with Structured Zod Schema, Architectural Rationales, and Gemini 2.5 Flash integration
-- [ ] **Phase 3:** RAG-powered Tech Concept Explainer with Supabase `pgvector`
+- [x] **Phase 3:** RAG-powered Tech Concept Explainer with Supabase `pgvector`
 - [ ] **Phase 4:** AI Technical Mock Interview Engine with streaming feedback
 - [ ] **Phase 5:** GitHub Actions CI/CD Pipeline, Vitest Unit Testing, and Production Deployment
 
