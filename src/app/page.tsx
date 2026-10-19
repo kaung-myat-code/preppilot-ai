@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { useChat } from "ai/react";
 import {
   Sparkles,
   Layers,
@@ -17,6 +18,11 @@ import {
   Search,
   BookOpen,
   Database,
+  MessageSquare,
+  Send,
+  Bot,
+  User,
+  RotateCcw,
 } from "lucide-react";
 
 export interface ArchitectureLayer {
@@ -47,7 +53,7 @@ export interface TechTermResult {
   similarity?: number;
 }
 
-type ActiveTab = "co-builder" | "concept-explainer";
+type ActiveTab = "co-builder" | "concept-explainer" | "mock-interview";
 
 const PRESET_IDEAS = [
   {
@@ -75,6 +81,99 @@ const SEARCH_CHIPS = [
   "Why use a Vector Database?",
 ];
 
+const INTERVIEW_STARTERS = [
+  {
+    label: "Start Full-Stack Interview",
+    prompt:
+      "Hi! I'm ready to start my Full-Stack & AI Developer mock interview. Please ask me your first technical question about Next.js App Router or React architecture.",
+  },
+  {
+    label: "Explain RAG & Embeddings",
+    prompt:
+      "Let's practice RAG & Vector Embeddings. In my own words: RAG converts documents into vector embeddings stored in pgvector, retrieves semantically similar chunks for a user query, and passes them into the LLM context window to ground the answer and reduce hallucinations. How would you evaluate this explanation?",
+  },
+  {
+    label: "System Design: Resume Analyzer",
+    prompt:
+      "I'd like to practice system design for an AI Resume Analyzer built with Next.js, Supabase, and Gemini. Ask me how I would design the ingestion pipeline, structured output validation, and database security.",
+  },
+];
+
+const INITIAL_INTERVIEW_MESSAGES = [
+  {
+    id: "welcome-interviewer-msg",
+    role: "assistant" as const,
+    content:
+      "Welcome! I'm your **Senior Tech Lead & Hiring Manager** for today's technical mock interview.\n- We'll cover **Next.js, React, Supabase, APIs, RAG, and LLM integration**.\n- After each response, I'll evaluate your **Technical Accuracy** and **English Articulation/Fluency**, share a **Senior Model Answer** when helpful, and ask one follow-up question.\n- Choose a quick starter topic below or introduce yourself to begin!",
+  },
+];
+
+function renderInlineFormatting(text: string): React.ReactNode[] {
+  const segments = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  return segments.map((segment, idx) => {
+    if (segment.startsWith("**") && segment.endsWith("**") && segment.length > 4) {
+      return (
+        <strong key={idx} className="font-semibold text-white">
+          {segment.slice(2, -2)}
+        </strong>
+      );
+    }
+    if (segment.startsWith("`") && segment.endsWith("`") && segment.length > 2) {
+      return (
+        <code
+          key={idx}
+          className="rounded bg-slate-800/90 px-1.5 py-0.5 font-mono text-xs text-indigo-300"
+        >
+          {segment.slice(1, -1)}
+        </code>
+      );
+    }
+    return <React.Fragment key={idx}>{segment}</React.Fragment>;
+  });
+}
+
+function renderFormattedMessage(content: string): React.ReactNode {
+  const lines = content.split("\n");
+  return (
+    <div className="space-y-2">
+      {lines.map((rawLine, idx) => {
+        const line = rawLine.trim();
+        if (!line) {
+          return <div key={idx} className="h-1" />;
+        }
+        if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
+          return (
+            <div key={idx} className="flex items-start gap-2.5 pl-1">
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" />
+              <span className="flex-1 leading-relaxed">
+                {renderInlineFormatting(line.slice(2))}
+              </span>
+            </div>
+          );
+        }
+        const numberedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+        if (numberedMatch) {
+          return (
+            <div key={idx} className="flex items-start gap-2.5 pl-1">
+              <span className="mt-0.5 shrink-0 font-mono text-xs font-bold text-indigo-400">
+                {numberedMatch[1]}.
+              </span>
+              <span className="flex-1 leading-relaxed">
+                {renderInlineFormatting(numberedMatch[2])}
+              </span>
+            </div>
+          );
+        }
+        return (
+          <p key={idx} className="leading-relaxed">
+            {renderInlineFormatting(line)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function PrepPilotDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("co-builder");
 
@@ -92,6 +191,30 @@ export default function PrepPilotDashboard() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSeeding, setIsSeeding] = useState<boolean>(false);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
+
+  // Technical Mock Interview (Streaming Chat) State
+  const {
+    messages: interviewMessages,
+    setMessages: setInterviewMessages,
+    input: interviewInput,
+    handleInputChange: handleInterviewInputChange,
+    handleSubmit: handleInterviewSubmit,
+    append: appendInterviewMessage,
+    isLoading: isInterviewLoading,
+    error: interviewError,
+    stop: stopInterviewStream,
+  } = useChat({
+    api: "/api/mock-interview",
+    initialMessages: INITIAL_INTERVIEW_MESSAGES,
+  });
+
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (activeTab === "mock-interview") {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [interviewMessages, activeTab]);
 
   // Shared Clipboard State
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -258,7 +381,7 @@ export default function PrepPilotDashboard() {
           {/* Mode Toggle Navigation */}
           <nav
             aria-label="Workspace Mode Navigation"
-            className="inline-flex items-center rounded-xl border border-slate-800 bg-slate-900/90 p-1 self-start sm:self-auto"
+            className="inline-flex flex-wrap items-center gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1 self-start sm:self-auto"
           >
             <button
               type="button"
@@ -283,6 +406,18 @@ export default function PrepPilotDashboard() {
             >
               <BookOpen className="h-4 w-4" />
               Concept Explainer
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("mock-interview")}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition sm:text-sm ${
+                activeTab === "mock-interview"
+                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/25"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <MessageSquare className="h-4 w-4" />
+              Technical Mock Interview
             </button>
           </nav>
 
@@ -642,7 +777,7 @@ export default function PrepPilotDashboard() {
               </section>
             )}
           </>
-        ) : (
+        ) : activeTab === "concept-explainer" ? (
           <>
             {/* Concept Explainer Search Card */}
             <section className="rounded-2xl border border-slate-800/90 bg-slate-900/60 p-6 shadow-xl backdrop-blur-sm sm:p-8">
@@ -922,9 +1057,272 @@ export default function PrepPilotDashboard() {
               </section>
             )}
           </>
+        ) : (
+          <>
+            {/* Technical Mock Interview Header & Quick Starter Topics */}
+            <section className="rounded-2xl border border-slate-800/90 bg-slate-900/60 p-6 shadow-xl backdrop-blur-sm sm:p-8">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="max-w-3xl">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-300 mb-3">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Real-Time Streaming Technical Mock Interview
+                  </div>
+                  <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                    Practice with a Senior Principal Engineer
+                  </h1>
+                  <p className="mt-2 text-sm text-slate-400 sm:text-base">
+                    Simulate a realistic Full-Stack &amp; AI Developer interview. Receive
+                    instant streaming feedback on your{" "}
+                    <span className="text-slate-200 font-medium">Technical Accuracy</span>{" "}
+                    and{" "}
+                    <span className="text-slate-200 font-medium">
+                      English Articulation
+                    </span>
+                    , a 2-sentence Senior Model Answer when needed, and a targeted
+                    follow-up question.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopInterviewStream();
+                    setInterviewMessages(INITIAL_INTERVIEW_MESSAGES);
+                  }}
+                  className="inline-flex shrink-0 items-center gap-2 self-start rounded-xl border border-slate-700/80 bg-slate-950/80 px-3.5 py-2 text-xs font-medium text-slate-300 transition hover:border-indigo-500/50 hover:text-indigo-200"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-indigo-400" />
+                  Reset Session
+                </button>
+              </div>
+
+              {/* Quick Starter Topic Buttons */}
+              <div className="mt-5 flex flex-wrap items-center gap-2.5 border-t border-slate-800/80 pt-4">
+                <span className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
+                  <Wand2 className="h-3.5 w-3.5 text-indigo-400" />
+                  Quick starter topics:
+                </span>
+                {INTERVIEW_STARTERS.map((starter) => (
+                  <button
+                    key={starter.label}
+                    type="button"
+                    disabled={isInterviewLoading}
+                    onClick={() => {
+                      void appendInterviewMessage({
+                        role: "user",
+                        content: starter.prompt,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-950/80 px-3.5 py-2 text-xs font-semibold text-slate-200 transition hover:border-indigo-500/50 hover:bg-indigo-500/10 hover:text-indigo-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                    {starter.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Realistic Streaming Chat Window */}
+            <section className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-800/90 bg-slate-900/50 shadow-2xl">
+              {/* Chat Window Top Bar */}
+              <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/70 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/20">
+                    <Bot className="h-5 w-5" />
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-slate-950 bg-emerald-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-bold text-white sm:text-base">
+                        Senior Tech Lead
+                      </h2>
+                      <span className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                        Principal Engineer &amp; Hiring Manager
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Topics: Next.js, React, Supabase, APIs, RAG &amp; LLM Integration
+                    </p>
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+                  {isInterviewLoading ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-indigo-300">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Streaming Evaluation...
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-300">
+                      <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                      Live Interview Session
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Messages Feed */}
+              <div
+                className="flex-1 space-y-6 overflow-y-auto p-6 max-h-[540px] min-h-[380px]"
+                aria-live="polite"
+              >
+                {interviewMessages.map((msg) => {
+                  const isCandidate = msg.role === "user";
+                  const msgCopyId = `chat-msg-${msg.id}`;
+                  const isMsgCopied = copiedId === msgCopyId;
+
+                  return (
+                    <div
+                      key={msg.id}
+                      className={`flex items-start gap-4 ${
+                        isCandidate ? "flex-row-reverse" : "flex-row"
+                      }`}
+                    >
+                      {/* Role Avatar */}
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border shadow-md ${
+                          isCandidate
+                            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+                            : "border-indigo-500/40 bg-indigo-500/15 text-indigo-300"
+                        }`}
+                        title={isCandidate ? "Candidate" : "Senior Tech Lead"}
+                      >
+                        {isCandidate ? (
+                          <User className="h-4 w-4" />
+                        ) : (
+                          <Bot className="h-4 w-4" />
+                        )}
+                      </div>
+
+                      {/* Message Bubble */}
+                      <div
+                        className={`flex max-w-3xl flex-col gap-1.5 ${
+                          isCandidate ? "items-end" : "items-start"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 px-1">
+                          <span className="text-xs font-semibold text-slate-300">
+                            {isCandidate ? "Candidate (You)" : "Senior Tech Lead"}
+                          </span>
+                          {!isCandidate && msg.content && (
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(msg.content, msgCopyId)}
+                              aria-label="Copy interviewer feedback"
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-slate-400 transition hover:bg-slate-800 hover:text-slate-200"
+                            >
+                              {isMsgCopied ? (
+                                <>
+                                  <Check className="h-3 w-3 text-emerald-400" />
+                                  <span className="text-emerald-300">Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-3 w-3" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </div>
+
+                        <div
+                          className={`rounded-2xl px-5 py-4 text-sm shadow-md ${
+                            isCandidate
+                              ? "rounded-tr-sm border border-indigo-500/40 bg-indigo-600/90 text-white"
+                              : "rounded-tl-sm border border-slate-800 bg-slate-950/90 text-slate-200"
+                          }`}
+                        >
+                          {msg.content ? (
+                            isCandidate ? (
+                              <p className="whitespace-pre-wrap leading-relaxed">
+                                {msg.content}
+                              </p>
+                            ) : (
+                              renderFormattedMessage(msg.content)
+                            )
+                          ) : (
+                            <div className="flex items-center gap-2 text-xs text-indigo-300">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              <span>Senior Tech Lead is evaluating your response...</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Error Banner Inside Chat */}
+              {interviewError && (
+                <div
+                  role="alert"
+                  className="mx-6 mb-3 flex items-start gap-3 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3.5 text-xs text-rose-200 sm:text-sm"
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-400 mt-0.5" />
+                  <div className="flex-1">{interviewError.message}</div>
+                </div>
+              )}
+
+              {/* Chat Input Form */}
+              <form
+                onSubmit={(e) => {
+                  void handleInterviewSubmit(e);
+                }}
+                className="border-t border-slate-800 bg-slate-950/85 p-4 sm:px-6"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <div className="relative flex-1">
+                    <label htmlFor="mock-interview-input" className="sr-only">
+                      Your interview response
+                    </label>
+                    <textarea
+                      id="mock-interview-input"
+                      rows={2}
+                      value={interviewInput}
+                      onChange={handleInterviewInputChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          if (!isInterviewLoading && interviewInput.trim()) {
+                            void handleInterviewSubmit();
+                          }
+                        }
+                      }}
+                      placeholder="Type your technical explanation here (Press Enter to send, Shift+Enter for new line)..."
+                      disabled={isInterviewLoading}
+                      className="w-full resize-none rounded-xl border border-slate-700/80 bg-slate-900/90 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 shadow-inner transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isInterviewLoading || !interviewInput.trim()}
+                    className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-semibold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isInterviewLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Streaming...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-4 w-4" />
+                        <span>Send Answer</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </>
         )}
       </main>
     </div>
   );
 }
+
 
