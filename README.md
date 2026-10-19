@@ -2,12 +2,29 @@
 
 > **An Agentic Full-Stack Platform for Generating Production Architecture Blueprints, Interview Justifications ("Why"), and Human vs. AI Task Allocations.**
 
+[![Live on Vercel](https://img.shields.io/badge/Vercel-Live_Demo-black?style=flat&logo=vercel)](https://preppilot-ai-eight.vercel.app/)
+[![CI](https://github.com/kaung-myat-code/preppilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/kaung-myat-code/preppilot-ai/actions/workflows/ci.yml)
 [![Next.js](https://img.shields.io/badge/Next.js-14+-black?style=flat&logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue?style=flat&logo=typescript)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-38bdf8?style=flat&logo=tailwind-css)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-emerald?style=flat&logo=supabase)](https://supabase.com/)
 [![Gemini API](https://img.shields.io/badge/Google-Gemini_2.5_Flash-orange?style=flat&logo=google)](https://aistudio.google.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+---
+
+## 🖼️ Application Preview & Screenshots
+
+🔗 **Live demo:** [https://preppilot-ai-eight.vercel.app/](https://preppilot-ai-eight.vercel.app/)
+
+### Blueprint Builder
+![Blueprint Builder](./public/screenshots/blueprint-builder.png)
+
+### Concept Explainer
+![Concept Explainer](./public/screenshots/concept-explainer.png)
+
+### Mock Interview
+![Mock Interview](./public/screenshots/mock-interview.png)
 
 ---
 
@@ -72,7 +89,7 @@ Fresh Computer Science and Information Technology graduates frequently encounter
 ### 2. Installation
 ```bash
 # Clone the repository
-git clone [https://github.com/kaung-myat-code/preppilot-ai.git](https://github.com/kaung-myat-code/preppilot-ai.git)
+git clone https://github.com/kaung-myat-code/preppilot-ai.git
 cd preppilot-ai
 
 # Install dependencies
