@@ -117,11 +117,25 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🗺️ Roadmap & Milestones
 
+### ✅ v1.0 — Completed
+
 - [x] **Phase 1:** Environment setup, Next.js 14 App Router, Supabase Schema & Auth configuration
 - [x] **Phase 2:** AI Co-Builder with Structured Zod Schema, Architectural Rationales, and Gemini 2.5 Flash integration
 - [x] **Phase 3:** RAG-powered Tech Concept Explainer with Supabase `pgvector`
 - [x] **Phase 4:** AI Technical Mock Interview Engine with streaming feedback
-- [ ] **Phase 5:** GitHub Actions CI/CD Pipeline, Vitest Unit Testing, and Production Deployment
+- [x] **Phase 5:** GitHub Actions CI/CD Pipeline, Vitest Unit Testing, and Production Deployment on Vercel
+
+### ✨ v1.1 — Polish
+
+- [ ] **Interview session controls:** Start, pause, restart, and end mock interview sessions
+- [ ] **Interview scorecards:** End-of-session scorecard covering technical accuracy and English delivery
+- [ ] **UX polish:** Loading/error states, accessibility pass, and mobile layout refinements
+
+### 🚀 v2.0 — Platform Roadmap
+
+- [ ] **User authentication:** Supabase Auth sign-in (email / OAuth) with per-user sessions
+- [ ] **Saved history:** Persist blueprints, explanations, and interview scorecards per user, protected by Row Level Security (RLS)
+- [ ] **Progress dashboard:** Track scorecard trends across interview sessions over time
 
 ---
 
