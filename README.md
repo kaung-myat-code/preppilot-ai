@@ -117,25 +117,63 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## 🗺️ Roadmap & Milestones
 
-### ✅ v1.0 — Completed
+### Completed MVP (v1.0.0)
+- [x] **Phase 1: Foundation & Auth Setup**
+  - Next.js 14 App Router, TypeScript, and Tailwind CSS architecture.
+  - Supabase client integration (`@supabase/ssr`) with PostgreSQL database and `pgvector` extension.
+- [x] **Phase 2: AI Co-Builder & Blueprint Engine**
+  - Deterministic structured JSON generation via Gemini 2.5 Flash and strict Zod schemas.
+  - Architectural Rationale ("Why this tech?") generator with one-click interview defense snippets.
+  - Clear task separation: Human engineering responsibilities vs. Agentic prompts (Cursor/Claude Code).
+- [x] **Phase 3: RAG Concept Explainer (`pgvector`)**
+  - High-dimensional vector embeddings with Gemini.
+  - Sub-second cosine similarity search powered by a custom Supabase PostgreSQL RPC function.
+  - Tuned similarity threshold (`0.55`) to eliminate mathematical false positives.
+  - Idempotent database seeding using PostgreSQL `UPSERT` to guarantee data integrity.
+- [x] **Phase 4: Real-Time Technical Mock Interview Studio**
+  - Streaming token responses via Vercel AI SDK (`useChat`, `streamText`).
+  - Dual evaluation criteria: Technical Accuracy and English Articulation/Fluency.
+  - Senior model answer generation and dynamic conversational follow-up questioning.
+- [x] **Phase 5: DevOps, Quality Gates & Deployment**
+  - Automated CI pipeline with GitHub Actions enforcing linting, clean-room TypeScript checks, and Vitest unit testing.
+  - Isolated dependency overrides in `package.json` to mitigate dev-time advisories without forced downgrades.
+  - Production deployment to Vercel with zero-downtime automated builds.
 
-- [x] **Phase 1:** Environment setup, Next.js 14 App Router, Supabase Schema & Auth configuration
-- [x] **Phase 2:** AI Co-Builder with Structured Zod Schema, Architectural Rationales, and Gemini 2.5 Flash integration
-- [x] **Phase 3:** RAG-powered Tech Concept Explainer with Supabase `pgvector`
-- [x] **Phase 4:** AI Technical Mock Interview Engine with streaming feedback
-- [x] **Phase 5:** GitHub Actions CI/CD Pipeline, Vitest Unit Testing, and Production Deployment on Vercel
+---
 
-### ✨ v1.1 — Polish
+### Upcoming Enhancements (v1.1.0 — Dynamic Knowledge Base & Interview Controls)
+- [ ] **Self-Populating Dynamic RAG Fallback:**
+  - Read-Through generative cache for the Concept Explainer: if Supabase cosine similarity falls below `0.55`, dynamically synthesize missing terms with Gemini via Zod schema.
+  - Automated 768-dimensional embedding generation and PostgreSQL `UPSERT` to permanently index new concepts for future users.
+  - UI indicator ("✨ Auto-indexed Concept") notifying candidates when a fresh term is indexed.
+- [ ] **Expanded Track Selector & Custom Topics:**
+  - Specialized starter chips: Frontend (React rendering, hydration), Backend (auth, indexing), and AI Engineering.
+  - Free-form custom topic input field for practicing niche or specialized technologies.
+- [ ] **Interactive Mock Interview Controls:**
+  - Configurable interview session limits (e.g., 5-question or 10-question rounds).
+  - Countdown session timer per response to simulate real interview pressure.
+- [ ] **Interview Performance Scorecard:**
+  - End-of-session evaluation report summarizing technical depth, terminology usage, and communication fluency.
+  - Downloadable or copyable Markdown feedback report for candidate self-review.
+- [ ] **UI/UX Polish:**
+  - Micro-interactions and toast notifications for copy-to-clipboard actions.
+  - Mobile responsiveness tuning for code blocks and streaming chat layouts.
 
-- [ ] **Interview session controls:** Start, pause, restart, and end mock interview sessions
-- [ ] **Interview scorecards:** End-of-session scorecard covering technical accuracy and English delivery
-- [ ] **UX polish:** Loading/error states, accessibility pass, and mobile layout refinements
+---
 
-### 🚀 v2.0 — Platform Roadmap
-
-- [ ] **User authentication:** Supabase Auth sign-in (email / OAuth) with per-user sessions
-- [ ] **Saved history:** Persist blueprints, explanations, and interview scorecards per user, protected by Row Level Security (RLS)
-- [ ] **Progress dashboard:** Track scorecard trends across interview sessions over time
+### Production Scale & Platform Roadmap (v2.0.0)
+- [ ] **User Persistence & Dashboards (Supabase Auth):**
+  - GitHub & Google OAuth login integration.
+  - Persist generated blueprints and mock interview logs to user accounts in the `projects` table.
+  - Searchable personal library of saved architectural designs and interview notes.
+- [ ] **Voice-to-Voice Mock Interviews:**
+  - Web Speech API (or Whisper STT) for verbal audio response input.
+  - Text-to-Speech (TTS) streaming for the AI interviewer voice.
+- [ ] **Rate Limiting & Abuse Prevention:**
+  - IP-based rate limiting via Upstash Redis (`@upstash/ratelimit`) on public endpoints to protect API quotas.
+- [ ] **Community Blueprint Sharing:**
+  - Public shareable URLs for generated architectures.
+  - Community feed showcasing popular full-stack and AI project blueprints.
 
 ---
 
