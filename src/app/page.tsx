@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Send,
   ArrowUpRight,
+  Sparkles,
 } from "lucide-react";
 
 export interface ArchitectureLayer {
@@ -34,10 +35,16 @@ export interface SystemBlueprint {
 export interface TechTermResult {
   id?: number | string;
   term: string;
-  analogy: string;
-  technical_definition: string;
-  interview_answer: string;
+  category?: "frontend" | "backend" | "devops" | "ai" | "general";
+  definition?: string;
+  interviewContext?: string;
+  tradeoffs?: string[];
+  commonPitfalls?: string[];
+  analogy?: string;
+  technical_definition?: string;
+  interview_answer?: string;
   similarity?: number;
+  autoIndexed?: boolean;
 }
 
 type ActiveTab = "co-builder" | "concept-explainer" | "mock-interview";
@@ -296,7 +303,9 @@ export default function PrepPilotDashboard() {
 
       const resolvedTerms: TechTermResult[] = Array.isArray(data)
         ? data
-        : (data.results ?? data.terms ?? []);
+        : (data.results ??
+            data.terms ??
+            (typeof data?.term === "string" ? [data as TechTermResult] : []));
 
       setSearchResults(resolvedTerms);
       setHasSearched(true);
@@ -668,6 +677,7 @@ export default function PrepPilotDashboard() {
                   <input
                     id="concept-search-input"
                     type="text"
+                    maxLength={60}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search technical concepts (e.g., What is an API?, SSR vs CSR, RAG)..."
@@ -735,20 +745,50 @@ export default function PrepPilotDashboard() {
                     typeof result.similarity === "number"
                       ? `${Math.round(result.similarity * 100)}% match`
                       : null;
+                  const resolvedDefinition =
+                    result.definition ?? result.technical_definition ?? "";
+                  const resolvedInterviewText =
+                    result.interviewContext ?? result.interview_answer ?? "";
+                  const hasTradeoffsOrPitfalls =
+                    (Array.isArray(result.tradeoffs) &&
+                      result.tradeoffs.length > 0) ||
+                    (Array.isArray(result.commonPitfalls) &&
+                      result.commonPitfalls.length > 0);
 
                   return (
                     <section
                       key={`${result.term}-${result.id ?? idx}`}
                       className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6 space-y-4"
                     >
-                      <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <span className="font-mono text-xs text-zinc-500">
-                            0{idx + 1}
-                          </span>
-                          <h2 className="text-base font-semibold text-zinc-100">
-                            {result.term}
-                          </h2>
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-800/80 pb-3">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <span className="font-mono text-xs text-zinc-500">
+                              0{idx + 1}
+                            </span>
+                            <h2 className="text-base font-semibold text-zinc-100">
+                              {result.term}
+                            </h2>
+                            {result.category && (
+                              <span className="rounded border border-zinc-700/60 bg-zinc-800/70 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wider text-zinc-300">
+                                {result.category}
+                              </span>
+                            )}
+                            {result.autoIndexed === true && (
+                              <span
+                                title="Synthesized via Gemini & permanently cached in pgvector"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-2.5 py-0.5 text-xs font-medium text-emerald-300"
+                              >
+                                <Sparkles className="h-3 w-3 text-emerald-400" />
+                                <span>✨ Auto-indexed Concept</span>
+                              </span>
+                            )}
+                          </div>
+                          {result.autoIndexed === true && (
+                            <p className="pl-6 text-[11px] text-zinc-400">
+                              Synthesized via Gemini &amp; permanently cached in pgvector
+                            </p>
+                          )}
                         </div>
                         {similarityPct && (
                           <span className="font-mono text-xs text-zinc-400 bg-zinc-800/60 px-2 py-0.5 rounded border border-zinc-700/50">
@@ -758,7 +798,7 @@ export default function PrepPilotDashboard() {
                       </div>
 
                       <div className="grid gap-4 sm:grid-cols-3">
-                        {/* Analogy */}
+                        {/* Analogy / Architectural Context */}
                         <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-1.5">
                           <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
                             Analogy
@@ -774,7 +814,7 @@ export default function PrepPilotDashboard() {
                             Technical Definition
                           </span>
                           <p className="text-xs text-zinc-300 leading-relaxed">
-                            {result.technical_definition}
+                            {resolvedDefinition}
                           </p>
                         </div>
 
@@ -787,7 +827,9 @@ export default function PrepPilotDashboard() {
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handleCopy(result.interview_answer, copyKey)}
+                                onClick={() =>
+                                  handleCopy(resolvedInterviewText, copyKey)
+                                }
                                 className="inline-flex items-center gap-1 text-[11px] text-zinc-400 hover:text-zinc-200 transition"
                               >
                                 {isAnswerCopied ? (
@@ -804,11 +846,55 @@ export default function PrepPilotDashboard() {
                               </button>
                             </div>
                             <p className="text-xs text-zinc-300 leading-relaxed italic">
-                              &ldquo;{result.interview_answer}&rdquo;
+                              &ldquo;{resolvedInterviewText}&rdquo;
                             </p>
                           </div>
                         </div>
                       </div>
+
+                      {hasTradeoffsOrPitfalls && (
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {Array.isArray(result.tradeoffs) &&
+                            result.tradeoffs.length > 0 && (
+                              <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-2">
+                                <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                                  Architectural Trade-offs
+                                </span>
+                                <ul className="space-y-1 text-xs text-zinc-300">
+                                  {result.tradeoffs.map((item, tIdx) => (
+                                    <li
+                                      key={tIdx}
+                                      className="flex items-start gap-2 leading-relaxed"
+                                    >
+                                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+                                      <span>{item}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                          {Array.isArray(result.commonPitfalls) &&
+                            result.commonPitfalls.length > 0 && (
+                              <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-2">
+                                <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                                  Common Pitfalls
+                                </span>
+                                <ul className="space-y-1 text-xs text-zinc-300">
+                                  {result.commonPitfalls.map((item, pIdx) => (
+                                    <li
+                                      key={pIdx}
+                                      className="flex items-start gap-2 leading-relaxed"
+                                    >
+                                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+                                      <span>{item}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                        </div>
+                      )}
                     </section>
                   );
                 })}
