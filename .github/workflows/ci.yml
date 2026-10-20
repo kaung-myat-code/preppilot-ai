@@ -30,3 +30,17 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+
+      - name: Audit Client Bundles for Secret Leaks
+        run: |
+          if grep -rq "SUPABASE_SERVICE_ROLE_KEY" .next/static/; then
+            echo "::error::SECURITY ALERT: SUPABASE_SERVICE_ROLE_KEY found in client-side static chunks!"
+            exit 1
+          fi
+          echo "Security verification passed: No service role keys found in client bundles."
