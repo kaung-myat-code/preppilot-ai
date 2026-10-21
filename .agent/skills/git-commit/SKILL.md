@@ -14,6 +14,7 @@ Trigger this skill whenever the user says "commit", "/commit", "commit my change
    - Run `git status` to see all modified/untracked files.
    - Verify that NO sensitive files (e.g., `.env`, `.env.local`, API keys, certificates) are unstaged or being committed.
    - If any secret or `.env` file is untracked or staged, immediately alert the user and abort the commit.
+   - Check git status. If any files under `src/app/api/`, `src/lib/schemas.ts`, or database migrations were modified, verify that `.agent/PROJECT_STATE.md` was also staged. If not, prompt or update `PROJECT_STATE.md` before creating the commit.
 
 2. **Inspect Diffs & Group Commits:**
    - Run `git diff` to understand code modifications.
