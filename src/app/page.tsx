@@ -41,8 +41,6 @@ export interface TechTermResult {
   tradeoffs?: string[];
   commonPitfalls?: string[];
   analogy?: string;
-  technical_definition?: string;
-  interview_answer?: string;
   similarity?: number;
   autoIndexed?: boolean;
 }
@@ -184,6 +182,7 @@ export default function PrepPilotDashboard() {
   const [hasSearched, setHasSearched] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [rejectedReason, setRejectedReason] = useState<string | null>(null);
 
   // Technical Mock Interview State
   const {
@@ -280,6 +279,7 @@ export default function PrepPilotDashboard() {
 
     setIsSearching(true);
     setSearchError(null);
+    setRejectedReason(null);
 
     try {
       const response = await fetch("/api/search-terms", {
@@ -291,6 +291,17 @@ export default function PrepPilotDashboard() {
       });
 
       const data = await response.json();
+
+      if (response.status === 422) {
+        setRejectedReason(
+          typeof data?.reason === "string"
+            ? data.reason
+            : "This query doesn't appear to be a recognized technical concept."
+        );
+        setSearchResults([]);
+        setHasSearched(true);
+        return;
+      }
 
       if (!response.ok) {
         setSearchError(
@@ -305,7 +316,11 @@ export default function PrepPilotDashboard() {
         ? data
         : (data.results ??
             data.terms ??
-            (typeof data?.term === "string" ? [data as TechTermResult] : []));
+            (typeof data?.data?.term === "string"
+              ? [data.data as TechTermResult]
+              : typeof data?.term === "string"
+                ? [data as TechTermResult]
+                : []));
 
       setSearchResults(resolvedTerms);
       setHasSearched(true);
@@ -728,6 +743,26 @@ export default function PrepPilotDashboard() {
               )}
             </section>
 
+            {/* Non-technical Query Guidance */}
+            {!isSearching && rejectedReason && (
+              <section
+                aria-live="polite"
+                className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6 space-y-3"
+              >
+                <h2 className="text-sm font-semibold text-zinc-200">
+                  Concept Not Recognized
+                </h2>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  {rejectedReason}
+                </p>
+                <p className="rounded-lg border border-zinc-800/80 bg-zinc-950 px-3.5 py-2.5 text-xs text-zinc-400 leading-relaxed">
+                  Try searching for concepts like &apos;WAL in SQLite&apos;,
+                  &apos;Kafka Partitioning&apos;, &apos;RSC Hydration&apos;, or
+                  &apos;eBPF&apos;.
+                </p>
+              </section>
+            )}
+
             {/* Searching Skeleton */}
             {isSearching && (
               <div className="space-y-4 animate-pulse pt-2" aria-busy="true">
@@ -745,10 +780,8 @@ export default function PrepPilotDashboard() {
                     typeof result.similarity === "number"
                       ? `${Math.round(result.similarity * 100)}% match`
                       : null;
-                  const resolvedDefinition =
-                    result.definition ?? result.technical_definition ?? "";
-                  const resolvedInterviewText =
-                    result.interviewContext ?? result.interview_answer ?? "";
+                  const resolvedDefinition = result.definition ?? "";
+                  const resolvedInterviewText = result.interviewContext ?? "";
                   const hasTradeoffsOrPitfalls =
                     (Array.isArray(result.tradeoffs) &&
                       result.tradeoffs.length > 0) ||
@@ -797,16 +830,14 @@ export default function PrepPilotDashboard() {
                         )}
                       </div>
 
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        {/* Analogy / Architectural Context */}
-                        <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-1.5">
-                          <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-                            Analogy
-                          </span>
-                          <p className="text-xs text-zinc-300 leading-relaxed">
-                            {result.analogy}
-                          </p>
+                      {result.analogy && (
+                        <div className="mt-4 p-3 rounded-lg bg-zinc-900/50 border border-zinc-800 text-sm">
+                          <span className="font-semibold text-zinc-300">💡 Analogy: </span>
+                          <span className="text-zinc-400">{result.analogy}</span>
                         </div>
+                      )}
+
+                      <div className="grid gap-4 sm:grid-cols-2">
 
                         {/* Technical Definition */}
                         <div className="rounded-lg border border-zinc-800/80 bg-zinc-900/60 p-4 space-y-1.5">
@@ -902,7 +933,7 @@ export default function PrepPilotDashboard() {
             )}
 
             {/* Empty Search State */}
-            {!isSearching && searchResults.length === 0 && (
+            {!isSearching && searchResults.length === 0 && !rejectedReason && (
               <div className="rounded-xl border border-dashed border-zinc-800 p-10 text-center space-y-2">
                 <p className="text-sm font-medium text-zinc-300">
                   {hasSearched ? "No matching concepts found." : "Search technical concepts"}

@@ -4,6 +4,7 @@ import {
   techTermSchema,
   searchResultSchema,
   searchTermsRequestSchema,
+  dynamicSynthesisResultSchema,
 } from "@/lib/schemas";
 
 const validBlueprint = {
@@ -64,6 +65,8 @@ describe("BlueprintSchema", () => {
 const validTechTerm = {
   term: "Idempotency Key",
   category: "backend" as const,
+  analogy:
+    "Like an elevator call button that only registers once even if pressed repeatedly.",
   definition:
     "A unique client-generated identifier attached to mutating requests so retries produce the same side effect only once.",
   interviewContext:
@@ -108,6 +111,47 @@ describe("techTermSchema & searchResultSchema", () => {
     expect(searchTermsRequestSchema.safeParse({ query: "   " }).success).toBe(false);
     expect(
       searchTermsRequestSchema.safeParse({ query: "a".repeat(61) }).success
+    ).toBe(false);
+  });
+});
+
+describe("dynamicSynthesisResultSchema", () => {
+  it("accepts a valid technical term (isValidTerm: true)", () => {
+    const result = dynamicSynthesisResultSchema.safeParse({
+      ...validTechTerm,
+      isValidTerm: true,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a valid variant with too-short definition or <2 tradeoffs", () => {
+    expect(
+      dynamicSynthesisResultSchema.safeParse({
+        ...validTechTerm,
+        isValidTerm: true,
+        definition: "too short",
+      }).success
+    ).toBe(false);
+    expect(
+      dynamicSynthesisResultSchema.safeParse({
+        ...validTechTerm,
+        isValidTerm: true,
+        tradeoffs: ["only one"],
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts a rejected non-technical term (isValidTerm: false)", () => {
+    const result = dynamicSynthesisResultSchema.safeParse({
+      isValidTerm: false,
+      reason: "The query is a casual phrase, not a software engineering concept.",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a rejection object missing a reason", () => {
+    expect(
+      dynamicSynthesisResultSchema.safeParse({ isValidTerm: false }).success
     ).toBe(false);
   });
 });

@@ -68,6 +68,7 @@ export const techTermSchema = z.object({
   category: techTermCategorySchema.describe(
     "The primary engineering category for the concept"
   ),
+  analogy: z.string().optional(),
   definition: z
     .string()
     .trim()
@@ -94,11 +95,55 @@ export const techTermSchema = z.object({
     ),
 });
 
+export const dynamicSynthesisResultSchema = z.discriminatedUnion("isValidTerm", [
+  z.object({
+    isValidTerm: z.literal(true),
+    term: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("The canonical name of the technical concept"),
+    category: techTermCategorySchema.describe(
+      "The primary engineering category for the concept"
+    ),
+    analogy: z
+      .string()
+      .min(10)
+      .describe("A concrete real-world analogy to help explain the concept in an interview"),
+    definition: z
+      .string()
+      .trim()
+      .min(20)
+      .describe("A rigorous architectural definition of how the concept works"),
+    interviewContext: z
+      .string()
+      .trim()
+      .min(30)
+      .describe("How a senior engineer should articulate this concept in an interview"),
+    tradeoffs: z
+      .array(z.string())
+      .min(2)
+      .describe("Concrete engineering trade-offs"),
+    commonPitfalls: z
+      .array(z.string())
+      .min(1)
+      .describe("Common production pitfalls or anti-patterns"),
+  }),
+  z.object({
+    isValidTerm: z.literal(false),
+    reason: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "Clear explanation of why the input is not a recognized computer science, software engineering, systems design, or cloud architecture concept"
+      ),
+  }),
+]);
+
 export const searchResultSchema = techTermSchema.extend({
   id: z.union([z.number(), z.string()]).optional(),
   analogy: z.string().optional(),
-  technical_definition: z.string().optional(),
-  interview_answer: z.string().optional(),
   similarity: z.number().optional(),
   autoIndexed: z.boolean(),
 });
@@ -113,6 +158,9 @@ export const searchTermsRequestSchema = z.object({
 
 export type TechTermCategory = z.infer<typeof techTermCategorySchema>;
 export type TechTerm = z.infer<typeof techTermSchema>;
+export type DynamicSynthesisResult = z.infer<typeof dynamicSynthesisResultSchema>;
+export type ValidSynthesis = Extract<DynamicSynthesisResult, { isValidTerm: true }>;
+export type RejectedSynthesis = Extract<DynamicSynthesisResult, { isValidTerm: false }>;
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchTermsRequest = z.infer<typeof searchTermsRequestSchema>;
 
