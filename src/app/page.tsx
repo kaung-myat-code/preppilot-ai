@@ -13,24 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 
-export interface ArchitectureLayer {
-  layerName: string;
-  selectedTech: string;
-  why: string;
-}
-
-export interface ExecutionStep {
-  module: string;
-  humanTask: string;
-  agenticPrompt: string;
-}
-
-export interface SystemBlueprint {
-  projectTitle: string;
-  summary: string;
-  architectureLayers: ArchitectureLayer[];
-  executionPlan: ExecutionStep[];
-}
+import type { ProjectDefense } from "@/lib/schemas";
 
 export interface TechTermResult {
   id?: number | string;
@@ -46,23 +29,22 @@ export interface TechTermResult {
 }
 
 type ActiveTab = "co-builder" | "concept-explainer" | "mock-interview";
-type BlueprintView = "layers" | "plan";
 
 const PRESET_IDEAS = [
   {
-    label: "AI Interview Coach",
+    label: "Next.js + Supabase pgvector RAG App",
     prompt:
-      "A real-time technical interview coaching platform with live coding workspaces, voice feedback, and personalized study roadmaps.",
+      "Next.js 14 App Router, Supabase PostgreSQL with pgvector, Gemini 2.5 Flash. A RAG-based technical interview prep platform with semantic search over a tech terms catalog, cookie-based auth, and dynamic generative fallback.",
   },
   {
-    label: "SaaS Billing Engine",
+    label: "Real-Time React + WebSockets Multiplayer Game",
     prompt:
-      "A B2B usage-based billing and real-time product analytics dashboard with webhook ingestion, role-based access control, and automated invoicing.",
+      "React 18, Zustand, Node.js WebSocket server with Redis pub/sub. A real-time multiplayer browser game with 5,000 concurrent players, lobby matchmaking, and server-authoritative game state.",
   },
   {
-    label: "Code Review Agent",
+    label: "Node.js + PostgreSQL FinTech Payment API",
     prompt:
-      "A GitHub-integrated security and architecture review bot that scans pull requests, generates inline fixes, and tracks technical debt.",
+      "Node.js with Express, PostgreSQL, Redis, Stripe webhooks. A FinTech payment API handling idempotent charges, double-entry ledger records, and reconciliation jobs at 500 requests per second.",
   },
 ];
 
@@ -168,11 +150,10 @@ function renderFormattedMessage(content: string): React.ReactNode {
 
 export default function PrepPilotDashboard() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("co-builder");
-  const [blueprintView, setBlueprintView] = useState<BlueprintView>("layers");
 
-  // AI Co-Builder State
+  // Project & JD Stress-Tester State
   const [prompt, setPrompt] = useState<string>("");
-  const [blueprint, setBlueprint] = useState<SystemBlueprint | null>(null);
+  const [defense, setDefense] = useState<ProjectDefense | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -227,12 +208,12 @@ export default function PrepPilotDashboard() {
     }
   };
 
-  const handleGenerateBlueprint = async (e?: React.FormEvent, customPrompt?: string) => {
+  const handleGenerateDefense = async (e?: React.FormEvent, customPrompt?: string) => {
     if (e) e.preventDefault();
     const targetPrompt = (customPrompt ?? prompt).trim();
 
-    if (!targetPrompt) {
-      setError("Please describe your project requirements.");
+    if (targetPrompt.length < 10) {
+      setError("Please enter at least 10 characters describing your project or the job description.");
       return;
     }
 
@@ -254,13 +235,12 @@ export default function PrepPilotDashboard() {
         setError(
           typeof data?.error === "string"
             ? data.error
-            : "Failed to generate blueprint. Please try again."
+            : "Failed to generate defense kit. Please try again."
         );
         return;
       }
 
-      const resolvedBlueprint: SystemBlueprint = data.blueprint ?? data;
-      setBlueprint(resolvedBlueprint);
+      setDefense(data as ProjectDefense);
     } catch {
       setError("Network error while connecting to PrepPilot server.");
     } finally {
@@ -360,7 +340,7 @@ export default function PrepPilotDashboard() {
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
-              Architecture Builder
+              Project &amp; JD Stress-Tester
             </button>
             <button
               type="button"
@@ -395,34 +375,35 @@ export default function PrepPilotDashboard() {
             {/* Header Description */}
             <div className="space-y-2">
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
-                Architecture Builder
+                Project &amp; JD Stress-Tester
               </h1>
               <p className="text-sm text-zinc-400 max-w-2xl leading-relaxed">
-                Design production-grade system stacks with architectural rationale and
-                structured agentic prompts for AI code generation.
+                Defense prep for your real project or target role. Get a spoken pitch,
+                skeptical trade-off questions, and production failure modes you can
+                answer verbatim in a live interview.
               </p>
             </div>
 
-            {/* Search Console Input */}
+            {/* Input Console */}
             <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-sm focus-within:border-zinc-700 transition">
-              <form onSubmit={(e) => handleGenerateBlueprint(e)} className="space-y-3">
+              <form onSubmit={(e) => handleGenerateDefense(e)} className="space-y-3">
                 <label htmlFor="project-prompt" className="sr-only">
-                  Project description
+                  Project stack or Job Description
                 </label>
                 <textarea
                   id="project-prompt"
-                  rows={3}
+                  rows={4}
+                  maxLength={2500}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Describe your system requirements, scale, and intended tech stack..."
+                  placeholder="Paste your project stack & summary (e.g., 'Next.js 14, Supabase pgvector, Gemini 2.5 interview prep platform') or a target Job Description..."
                   className="w-full bg-transparent text-sm sm:text-base text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed"
                   disabled={isLoading}
                 />
 
                 <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80 sm:flex-row sm:items-center sm:justify-between">
-                  {/* Preset Starters */}
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs text-zinc-500 mr-1">Presets:</span>
+                    <span className="text-xs text-zinc-500 mr-1">Try:</span>
                     {PRESET_IDEAS.map((preset) => (
                       <button
                         key={preset.label}
@@ -436,20 +417,19 @@ export default function PrepPilotDashboard() {
                     ))}
                   </div>
 
-                  {/* Submit Button */}
                   <button
                     type="submit"
-                    disabled={isLoading || !prompt.trim()}
+                    disabled={isLoading || prompt.trim().length < 10}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-100 px-4 py-2 text-xs font-medium text-zinc-950 transition hover:bg-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Synthesizing...</span>
+                        <span>Stress-testing...</span>
                       </>
                     ) : (
                       <>
-                        <span>Generate Blueprint</span>
+                        <span>Stress-Test My Project</span>
                         <ArrowUpRight className="h-3.5 w-3.5" />
                       </>
                     )}
@@ -457,7 +437,6 @@ export default function PrepPilotDashboard() {
                 </div>
               </form>
 
-              {/* Error Notice */}
               {error && (
                 <div
                   role="alert"
@@ -476,116 +455,79 @@ export default function PrepPilotDashboard() {
               </div>
             )}
 
-            {/* Blueprint Results (Progressive Disclosure) */}
-            {!isLoading && blueprint && (
-              <div className="space-y-6 pt-2">
-                {/* Project Overview Card */}
-                <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6 shadow-sm">
+            {/* Defense Results */}
+            {!isLoading && defense && (
+              <div className="space-y-8 pt-2">
+                {/* 1. Elevator Pitch */}
+                <section className="rounded-xl border border-emerald-500/40 bg-emerald-950/30 p-5 sm:p-6 shadow-sm">
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-2">
-                      <span className="font-mono text-[11px] tracking-wider uppercase text-zinc-500">
-                        System Overview
+                      <span className="font-mono text-[11px] tracking-wider uppercase text-emerald-400">
+                        🎙️ 30-Second Spoken Elevator Pitch
                       </span>
-                      <h2 className="text-xl font-semibold text-zinc-100 sm:text-2xl tracking-tight">
-                        {blueprint.projectTitle}
+                      <h2 className="text-lg font-semibold text-zinc-50 tracking-tight">
+                        {defense.projectTitle}
                       </h2>
-                      <p className="text-sm text-zinc-400 leading-relaxed max-w-2xl">
-                        {blueprint.summary}
+                      <p className="text-sm sm:text-base text-zinc-100 leading-relaxed">
+                        {defense.elevatorPitch}
                       </p>
                     </div>
-
                     <button
                       type="button"
-                      onClick={() =>
-                        handleCopy(
-                          `# ${blueprint.projectTitle}\n\n${blueprint.summary}`,
-                          "blueprint-overview"
-                        )
-                      }
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition"
+                      onClick={() => handleCopy(defense.elevatorPitch, "defense-pitch")}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-900/40 px-2.5 py-1.5 text-xs text-emerald-100 hover:bg-emerald-900/70 transition"
                     >
-                      {copiedId === "blueprint-overview" ? (
+                      {copiedId === "defense-pitch" ? (
                         <>
-                          <Check className="h-3 w-3 text-zinc-200" />
+                          <Check className="h-3 w-3" />
                           <span>Copied</span>
                         </>
                       ) : (
                         <>
                           <Copy className="h-3 w-3" />
-                          <span>Copy</span>
+                          <span>Copy Spoken Script</span>
                         </>
                       )}
                     </button>
                   </div>
                 </section>
 
-                {/* Sub-view Switcher (Progressive Disclosure) */}
-                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setBlueprintView("layers")}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                        blueprintView === "layers"
-                          ? "bg-zinc-800 text-zinc-100"
-                          : "text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      System Layers ({blueprint.architectureLayers.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBlueprintView("plan")}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                        blueprintView === "plan"
-                          ? "bg-zinc-800 text-zinc-100"
-                          : "text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      Developer Action Plan ({blueprint.executionPlan.length})
-                    </button>
-                  </div>
-                </div>
-
-                {/* Tab View: Architecture Layers */}
-                {blueprintView === "layers" && (
-                  <div className="space-y-3">
-                    {blueprint.architectureLayers.map((layer, index) => {
-                      const copyKey = `layer-${index}`;
-                      const isCopied = copiedId === copyKey;
-
-                      return (
-                        <article
-                          key={`${layer.layerName}-${index}`}
-                          className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-5 transition hover:border-zinc-700"
-                        >
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs text-zinc-500">
-                                0{index + 1}
-                              </span>
-                              <h3 className="text-sm font-semibold text-zinc-200">
-                                {layer.layerName}
-                              </h3>
-                            </div>
-                            <span className="rounded bg-zinc-800/80 px-2 py-0.5 font-mono text-xs text-zinc-300 border border-zinc-700/60">
-                              {layer.selectedTech}
+                {/* 2. Trade-Off Traps */}
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-zinc-100">
+                    ⚔️ &quot;Why X Over Y?&quot; Trade-Off Traps
+                  </h2>
+                  {defense.tradeoffTraps.map((trap, index) => {
+                    const copyKey = `defense-trap-${index}`;
+                    return (
+                      <article
+                        key={`${trap.chosenTech}-${index}`}
+                        className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4 sm:p-5 space-y-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs font-semibold text-zinc-200 border border-zinc-600">
+                            {trap.layer}
+                          </span>
+                          <span className="rounded bg-amber-500/15 px-2 py-0.5 font-mono text-xs text-amber-300 border border-amber-500/40">
+                            {trap.chosenTech}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-zinc-100 leading-relaxed">
+                          &ldquo;{trap.whyNotAlternativeQuestion}&rdquo;
+                        </p>
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                              Senior Defense Answer
                             </span>
-                          </div>
-
-                          <div className="mt-3 flex items-start justify-between gap-4">
-                            <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed">
-                              {layer.why}
-                            </p>
                             <button
                               type="button"
-                              onClick={() => handleCopy(layer.why, copyKey)}
-                              className="inline-flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300 transition pt-0.5"
-                              title="Copy rationale"
+                              onClick={() => handleCopy(trap.seniorDefenseAnswer, copyKey)}
+                              className="inline-flex items-center gap-1 text-xs text-zinc-300 hover:text-zinc-50 transition"
                             >
-                              {isCopied ? (
+                              {copiedId === copyKey ? (
                                 <>
-                                  <Check className="h-3 w-3 text-zinc-300" />
+                                  <Check className="h-3 w-3" />
                                   <span>Copied</span>
                                 </>
                               ) : (
@@ -596,74 +538,66 @@ export default function PrepPilotDashboard() {
                               )}
                             </button>
                           </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
+                          <p className="text-sm text-zinc-200 leading-relaxed">
+                            {trap.seniorDefenseAnswer}
+                          </p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </section>
 
-                {/* Tab View: Developer Action Plan */}
-                {blueprintView === "plan" && (
-                  <div className="space-y-4">
-                    {blueprint.executionPlan.map((step, index) => {
-                      const promptCopyKey = `plan-prompt-${index}`;
-                      const isPromptCopied = copiedId === promptCopyKey;
-
-                      return (
-                        <article
-                          key={`${step.module}-${index}`}
-                          className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 space-y-4"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            <span className="font-mono text-xs text-zinc-500">
-                              0{index + 1}
+                {/* 3. Production Bottlenecks */}
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold text-zinc-100">
+                    💥 Production Bottlenecks &amp; Failure Modes
+                  </h2>
+                  {defense.bottleneckTraps.map((trap, index) => {
+                    const copyKey = `defense-bottleneck-${index}`;
+                    return (
+                      <article
+                        key={`bottleneck-${index}`}
+                        className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 sm:p-5 space-y-3"
+                      >
+                        <div className="space-y-1">
+                          <span className="font-mono text-[11px] uppercase tracking-wider text-rose-400">
+                            Failure Scenario
+                          </span>
+                          <p className="text-sm text-zinc-100 leading-relaxed">
+                            {trap.failureScenario}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3.5 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                              Mitigation Strategy
                             </span>
-                            <h3 className="text-sm font-semibold text-zinc-200">
-                              {step.module}
-                            </h3>
+                            <button
+                              type="button"
+                              onClick={() => handleCopy(trap.mitigationStrategy, copyKey)}
+                              className="inline-flex items-center gap-1 text-xs text-zinc-300 hover:text-zinc-50 transition"
+                            >
+                              {copiedId === copyKey ? (
+                                <>
+                                  <Check className="h-3 w-3" />
+                                  <span>Copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-3 w-3" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
                           </div>
-
-                          <div className="space-y-1.5">
-                            <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-                              Human Setup
-                            </span>
-                            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed">
-                              {step.humanTask}
-                            </p>
-                          </div>
-
-                          <div className="space-y-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950 p-3.5">
-                            <div className="flex items-center justify-between">
-                              <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-                                Agent Prompt
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleCopy(step.agenticPrompt, promptCopyKey)}
-                                className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-200 transition"
-                              >
-                                {isPromptCopied ? (
-                                  <>
-                                    <Check className="h-3 w-3 text-zinc-300" />
-                                    <span>Copied</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="h-3 w-3" />
-                                    <span>Copy Prompt</span>
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                            <pre className="whitespace-pre-wrap font-mono text-xs text-zinc-300 leading-relaxed pt-1">
-                              {step.agenticPrompt}
-                            </pre>
-                          </div>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
+                          <p className="text-sm text-zinc-200 leading-relaxed">
+                            {trap.mitigationStrategy}
+                          </p>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </section>
               </div>
             )}
           </div>

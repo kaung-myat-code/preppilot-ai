@@ -78,6 +78,23 @@ Rows are filtered by `similarity >= match_threshold`, ordered by similarity desc
    - Dynamic threshold: **0.72** (`SIMILARITY_THRESHOLD`) for short queries; **0.65** (`NATURAL_LANGUAGE_THRESHOLD`) when word count exceeds `NATURAL_LANGUAGE_WORD_COUNT`.
 4. **Generative Fallback** — Gemini 2.5 Flash `generateObject` with a Zod schema produces a term entry. Non-technical or unresolvable queries are rejected by a guardrail returning **HTTP 422**.
 
+### 3.1 Connected Agent Skill Registry & Diagnostic Escalation
+
+| Skill | Role / Stage | Purpose |
+|-------|--------------|---------|
+| `code-review` | Stage 1 Gatekeeper | Adversarial pre-commit audit of schema drift, secret leaks, token bounds, and quality test gates. |
+| `git-commit` | Stage 2 Atomic Committer | Atomic conventional commits, ensures `.agent/PROJECT_STATE.md` is synchronized and staged. |
+| `ship-release` | Stage 3 Release Manager | Semantic versioning, build checks, client-bundle secret audits, GitHub release packaging. |
+| `consultative-debugger` | Diagnostic Escalation | Consultative root-cause and blast-radius analysis (Option A Tactical vs Option B Architectural); hard stops for human approval on smoke/build/dev test failures. |
+
+**Diagnostic Escalation Protocol:**
+When automated verification gates (`npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`), dev servers (`npm run dev`), or live smoke tests encounter unexpected failures or crashes:
+1. Halt immediately — no speculative "yolo" code edits.
+2. Invoke `consultative-debugger` to isolate root cause and map blast radius across schemas, API contracts, and dependent components.
+3. Deliver 4-Part Diagnostic Report (**Root Cause**, **Blast Radius**, **Option A Tactical vs Option B Architectural**, **Recommendation**).
+4. Strictly halt for explicit human approval before touching any files.
+5. Apply the approved fix and re-verify quality gates (`tsc`, `lint`, `test`) to close the loop.
+
 ---
 
 ## 4. Completed Milestones & Changelog
@@ -85,6 +102,9 @@ Rows are filtered by `similarity >= match_threshold`, ordered by similarity desc
 - **v1.0.0 — MVP release.**
 - **v1.1.0 Feature 1 — Dynamic RAG Fallback & schema drift resolution.**
 - **Governance — Locked Lean v1.1.0 Product Pivot** in `AGENTS.md`, `PROJECT_STATE.md`, and `README.md` (docs only; no `src/` changes).
+- **v1.1.0 Feature 2 / Step 1 — Project & JD Stress-Tester (Module 1 refactor).** Replaced `BlueprintSchema` with `projectDefenseSchema` (`projectTitle`, `elevatorPitch`, 3 `tradeoffTraps`, 2 `bottleneckTraps`) and added `projectDefenseRequestSchema` (`prompt` trimmed, 10–2500 chars) in `src/lib/schemas.ts`. `POST /api/generate-blueprint` now validates input (400 on failure) and uses `generateText` + `Output.object` with `gemini-2.5-flash` under a Staff Interviewer system prompt (banned AI clichés, first-person spoken output). UI tab renamed "Project & JD Stress-Tester" with example chips, pitch banner, trade-off cards, and bottleneck cards with copy buttons. Unit tests added in `src/__tests__/schemas.test.ts`. No DB/RAG contract changes.
+- **v1.1.0 Feature 2 Resilience Patch (Smoke Test Issue & Resolution).** During live smoke testing of `POST /api/generate-blueprint`, Gemini 2.5 Flash generated senior defense answers and mitigation strategies that intermittently exceeded the initial 400-character upper bounds in `projectDefenseSchema`, triggering an unhandled Zod validation error (`too_big`) and HTTP 500 failure. Using the `consultative-debugger` protocol, assessed blast radius and implemented the architectural fix: relaxed `seniorDefenseAnswer` and `mitigationStrategy` limits from 400 to 700 characters in `src/lib/schemas.ts`, calibrated the system prompt in `src/app/api/generate-blueprint/route.ts` to enforce concise spoken phrasing (under 60 words, strictly under 700 chars), and added boundary validation tests in `src/__tests__/schemas.test.ts`. Verified 100% pass across all 16 unit tests, types, and linter.
+- **Skill Governance — Registered `consultative-debugger` Skill.** Formalized `consultative-debugger` as our diagnostic escalation path across `AGENTS.md`, `.agent/skills/consultative-debugger/SKILL.md`, and `.agent/PROJECT_STATE.md` (Section 3.1) to enforce consultative diagnosis and zero yolo-fixing during test or build failures.
 
 ---
 
@@ -93,7 +113,7 @@ Rows are filtered by `similarity >= match_threshold`, ordered by similarity desc
 **Lean v1.1.0 Pivot**
 
 - **v1.1.0 Feature 1 (Completed):** Self-Populating Dynamic RAG Fallback (4-tier waterfall: Canonical Slug -> Alias Match -> pgvector Cosine [0.65/0.72] -> Generative Synthesis with HTTP 422 guardrail).
-- **v1.1.0 Feature 2 (Up Next — Step 1):** Project & JD Stress-Tester (pivoted from Architecture Co-Builder).
+- **v1.1.0 Feature 2 (Completed — Step 1):** Project & JD Stress-Tester (pivoted from Architecture Co-Builder). Next: Feature 3 (3-Round Grill).
   - Instead of generating hypothetical app ideas, accepts a candidate's real project stack/summary or target Job Description.
   - Outputs deterministic interview defense cards via Zod schema:
     1. `elevatorPitch`: 30-second first-person spoken intro script.

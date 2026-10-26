@@ -1,55 +1,70 @@
 import { z } from "zod";
 
-export const BlueprintSchema = z.object({
+export const projectDefenseSchema = z.object({
   projectTitle: z
     .string()
-    .describe("A concise, professional name for the software project"),
-  summary: z
+    .min(2)
+    .max(80)
+    .describe("Concise canonical name of the project or role"),
+  elevatorPitch: z
     .string()
+    .min(40)
+    .max(450)
     .describe(
-      "A comprehensive executive summary of the system architecture, target use case, and technical strategy"
+      "Strictly 2-3 first-person sentences ('I built/architected...') to be spoken aloud in 30 seconds, emphasizing engineering trade-offs and measurable impact"
     ),
-  architectureLayers: z
+  tradeoffTraps: z
     .array(
       z.object({
-        layerName: z
+        layer: z
           .string()
           .describe(
-            "The architectural layer (e.g., Frontend & UI, API & Backend Services, Database & Storage, AI & Orchestration, Auth & Security)"
+            "Architectural layer (e.g., Database & Indexing, Frontend & Rendering, API & Concurrency)"
           ),
-        selectedTech: z
+        chosenTech: z
           .string()
-          .describe("The specific technologies and frameworks chosen for this layer"),
-        why: z
+          .describe("The specific technology identified from the user's input"),
+        whyNotAlternativeQuestion: z
           .string()
           .describe(
-            "Detailed architectural rationale explaining why this technology is ideal for this project"
+            "Skeptical interviewer question comparing chosenTech against a realistic competing alternative"
+          ),
+        seniorDefenseAnswer: z
+          .string()
+          .max(700)
+          .describe(
+            "Concise 2-3 sentence first-person spoken defense citing concrete trade-offs and acknowledging when the alternative would be required"
           ),
       })
     )
-    .describe("Core system architecture layers and technology choices"),
-  executionPlan: z
+    .length(3)
+    .describe("Exactly 3 'Why X over Y?' trade-off traps"),
+  bottleneckTraps: z
     .array(
       z.object({
-        module: z
-          .string()
-          .describe("The implementation phase or system module name"),
-        humanTask: z
+        failureScenario: z
           .string()
           .describe(
-            "Concrete setup, configuration, or review tasks that the human developer should perform"
+            "Concrete production failure mode under load, network partition, or spike specific to the stack"
           ),
-        agenticPrompt: z
+        mitigationStrategy: z
           .string()
+          .max(700)
           .describe(
-            "A detailed, copy-paste-ready prompt designed for an AI coding assistant to build this module end-to-end"
+            "First-person explanation of the exact production mechanism used to prevent or mitigate this failure"
           ),
       })
     )
-    .describe("Step-by-step hybrid human + AI agent execution roadmap"),
+    .length(2)
+    .describe("Exactly 2 production bottleneck failure scenarios"),
 });
 
-export type Blueprint = z.infer<typeof BlueprintSchema>;
+export const projectDefenseRequestSchema = z.object({
+  prompt: z.string().trim().min(10).max(2500),
+});
+
+export type ProjectDefense = z.infer<typeof projectDefenseSchema>;
+export type ProjectDefenseRequest = z.infer<typeof projectDefenseRequestSchema>;
 
 export const techTermCategorySchema = z.enum([
   "frontend",

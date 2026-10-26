@@ -1,64 +1,137 @@
 import { describe, it, expect } from "vitest";
 import {
-  BlueprintSchema,
+  projectDefenseSchema,
+  projectDefenseRequestSchema,
   techTermSchema,
   searchResultSchema,
   searchTermsRequestSchema,
   dynamicSynthesisResultSchema,
 } from "@/lib/schemas";
 
-const validBlueprint = {
-  projectTitle: "TaskFlow",
-  summary: "A collaborative task management platform.",
-  architectureLayers: [
-    {
-      layerName: "Frontend & UI",
-      selectedTech: "Next.js, Tailwind CSS",
-      why: "Server components and fast iteration on UI.",
-    },
-  ],
-  executionPlan: [
-    {
-      module: "Auth",
-      humanTask: "Configure Supabase project and RLS policies.",
-      agenticPrompt: "Implement Supabase auth with @supabase/ssr.",
-    },
-  ],
+const validDefense = {
+  projectTitle: "PrepPilot AI",
+  elevatorPitch:
+    "I built a RAG interview prep platform on Next.js and Supabase pgvector. I chose pgvector to keep embeddings next to relational data, cutting lookup latency to under 80ms.",
+  tradeoffTraps: Array.from({ length: 3 }, (_, i) => ({
+    layer: `Layer ${i}`,
+    chosenTech: "Supabase pgvector",
+    whyNotAlternativeQuestion: "Why pgvector over Pinecone or Qdrant?",
+    seniorDefenseAnswer:
+      "I chose pgvector to avoid a second datastore. The trade-off is lower scale; past tens of millions of vectors I would move to Qdrant.",
+  })),
+  bottleneckTraps: Array.from({ length: 2 }, () => ({
+    failureScenario: "Embedding API spikes cause request pile-ups and timeouts.",
+    mitigationStrategy:
+      "To prevent this, I queue embedding calls with a concurrency cap and fall back to canonical lookups.",
+  })),
 };
 
-describe("BlueprintSchema", () => {
-  it("accepts a valid blueprint", () => {
-    const result = BlueprintSchema.safeParse(validBlueprint);
+describe("projectDefenseSchema", () => {
+  it("accepts a valid defense payload", () => {
+    expect(projectDefenseSchema.safeParse(validDefense).success).toBe(true);
+  });
+
+  it("rejects tradeoffTraps that are not exactly 3", () => {
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        tradeoffTraps: validDefense.tradeoffTraps.slice(0, 2),
+      }).success
+    ).toBe(false);
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        tradeoffTraps: [...validDefense.tradeoffTraps, validDefense.tradeoffTraps[0]],
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects bottleneckTraps that are not exactly 2", () => {
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        bottleneckTraps: validDefense.bottleneckTraps.slice(0, 1),
+      }).success
+    ).toBe(false);
+  });
+
+  it("enforces pitch and answer length limits", () => {
+    expect(
+      projectDefenseSchema.safeParse({ ...validDefense, elevatorPitch: "Too short." })
+        .success
+    ).toBe(false);
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        elevatorPitch: "x".repeat(451),
+      }).success
+    ).toBe(false);
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        tradeoffTraps: [
+          { ...validDefense.tradeoffTraps[0], seniorDefenseAnswer: "x".repeat(450) },
+          validDefense.tradeoffTraps[1],
+          validDefense.tradeoffTraps[2],
+        ],
+      }).success
+    ).toBe(true);
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        tradeoffTraps: [
+          { ...validDefense.tradeoffTraps[0], seniorDefenseAnswer: "x".repeat(701) },
+          validDefense.tradeoffTraps[1],
+          validDefense.tradeoffTraps[2],
+        ],
+      }).success
+    ).toBe(false);
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        bottleneckTraps: [
+          { ...validDefense.bottleneckTraps[0], mitigationStrategy: "x".repeat(701) },
+          validDefense.bottleneckTraps[1],
+        ],
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects a tradeoff trap missing 'chosenTech'", () => {
+    const { chosenTech, ...rest } = validDefense.tradeoffTraps[0];
+    void chosenTech;
+    expect(
+      projectDefenseSchema.safeParse({
+        ...validDefense,
+        tradeoffTraps: [rest, validDefense.tradeoffTraps[1], validDefense.tradeoffTraps[2]],
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("projectDefenseRequestSchema", () => {
+  it("accepts and trims a valid prompt", () => {
+    const result = projectDefenseRequestSchema.safeParse({
+      prompt: "   Next.js 14, Supabase pgvector   ",
+    });
     expect(result.success).toBe(true);
+    if (result.success) expect(result.data.prompt).toBe("Next.js 14, Supabase pgvector");
   });
 
-  it("rejects a layer missing the 'why' rationale", () => {
-    const { why, ...layerWithoutWhy } = validBlueprint.architectureLayers[0];
-    void why;
-    const result = BlueprintSchema.safeParse({
-      ...validBlueprint,
-      architectureLayers: [layerWithoutWhy],
-    });
-    expect(result.success).toBe(false);
+  it("rejects prompts under 10 characters (after trimming)", () => {
+    expect(projectDefenseRequestSchema.safeParse({ prompt: "short" }).success).toBe(false);
+    expect(
+      projectDefenseRequestSchema.safeParse({ prompt: "   123456789   " }).success
+    ).toBe(false);
   });
 
-  it("rejects a layer missing 'selectedTech'", () => {
-    const { selectedTech, ...layerWithoutTech } =
-      validBlueprint.architectureLayers[0];
-    void selectedTech;
-    const result = BlueprintSchema.safeParse({
-      ...validBlueprint,
-      architectureLayers: [layerWithoutTech],
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("rejects an execution step missing 'agenticPrompt'", () => {
-    const result = BlueprintSchema.safeParse({
-      ...validBlueprint,
-      executionPlan: [{ module: "Auth", humanTask: "Do it" }],
-    });
-    expect(result.success).toBe(false);
+  it("rejects prompts over 2500 characters and accepts exactly 2500", () => {
+    expect(
+      projectDefenseRequestSchema.safeParse({ prompt: "a".repeat(2501) }).success
+    ).toBe(false);
+    expect(
+      projectDefenseRequestSchema.safeParse({ prompt: "a".repeat(2500) }).success
+    ).toBe(true);
   });
 });
 

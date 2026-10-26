@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PrepPilot AI — System Architecture & Blueprint Studio",
+  title: "PrepPilot AI — Project & JD Stress-Tester",
   description:
-    "AI-powered system architecture blueprints and agentic execution plans powered by Groq Llama 3.3 70B.",
+    "Interview defense prep: spoken pitches, trade-off traps, and production failure modes powered by Gemini 2.5 Flash.",
 };
 
 export default function RootLayout({
