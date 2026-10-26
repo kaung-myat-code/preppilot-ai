@@ -3,33 +3,37 @@ name: git-commit
 description: Automates checking git status, verifying security boundaries, creating atomic conventional commits, updating roadmap progress, and pushing to remote. Use whenever the user asks to commit, push, or save progress.
 ---
 
-# Git Commit & Push Workflow Skill
+# Git Commit & Push Workflow Skill — Stage 2 Atomic Committer
+
+## Role & Pipeline Position
+Stage 2 of the pipeline defined in `AGENTS.md` Section 3. Run only after the `code-review` skill has returned `✅ APPROVED TO COMMIT`. If no approval exists for the current changes, run `code-review` first.
 
 ## When to Use
-Trigger this skill whenever the user says "commit", "/commit", "commit my changes", "git push", or asks to save completed phase progress to GitHub.
+Trigger whenever the user says "commit", "/commit", "commit my changes", "git push", or asks to save completed phase progress to GitHub.
+
+## Pre-Condition Check (Strict)
+
+1. Run `git status --short`. If `src/lib/schemas.ts`, `src/app/api/`, or database migrations are modified, verify `.agent/PROJECT_STATE.md` is also modified/staged. If not, **halt** and update `.agent/PROJECT_STATE.md` first.
+2. Scan the staged diff (`git diff --cached`) to guarantee no hardcoded API keys or `.env` files are staged (e.g., `.env`, `.env.local`, certificates, `GOOGLE_GENERATIVE_AI_API_KEY`/`SUPABASE_SERVICE_ROLE_KEY` values). If any are found, alert the user and abort.
+3. Stage files and commit using Conventional Commits.
 
 ## Execution Steps
 
-1. **Security & Boundary Check (Strict):**
-   - Run `git status` to see all modified/untracked files.
-   - Verify that NO sensitive files (e.g., `.env`, `.env.local`, API keys, certificates) are unstaged or being committed.
-   - If any secret or `.env` file is untracked or staged, immediately alert the user and abort the commit.
-   - Check git status. If any files under `src/app/api/`, `src/lib/schemas.ts`, or database migrations were modified, verify that `.agent/PROJECT_STATE.md` was also staged. If not, prompt or update `PROJECT_STATE.md` before creating the commit.
+1. **Inspect diffs & group commits:**
+   - Run `git diff HEAD` to understand modifications.
+   - Group related changes into atomic commits:
+     - `feat(<scope>):` new features or capabilities
+     - `fix(<scope>):` bug fixes
+     - `refactor:` restructuring without feature changes
+     - `docs:` documentation updates (AGENTS, PROJECT_STATE)
+     - `test:` test additions or updates
 
-2. **Inspect Diffs & Group Commits:**
-   - Run `git diff` to understand code modifications.
-   - Group related changes into clean, atomic commits following Conventional Commits format:
-     - `feat(<scope>):` for new features or capabilities
-     - `fix(<scope>):` for bug fixes or corrections
-     - `docs:` for documentation updates (README, AGENTS)
-     - `test:` for test additions or updates
-     - `refactor:` for code restructuring without feature changes
-
-3. **Roadmap Progress Sync:**
-   - If a major feature or phase milestone was completed, check `README.md` and mark the corresponding task as completed `[x]` under the Roadmap section.
-
-4. **Execute Commits & Push:**
-   - Stage files intentionally per commit group (e.g., `git add src/app/api/... && git commit -m "..."`).
+2. **Stage & commit:**
+   - Stage files intentionally per commit group (e.g., `git add src/app/api/... .agent/PROJECT_STATE.md && git commit -m "..."`), always including `.agent/PROJECT_STATE.md` when the pre-condition applies.
    - Never use `git add .` blindly if there are distinct logical features.
-   - Run `git push origin main`.
-   - Provide the user with a concise summary of the committed hashes and messages.
+
+3. **Push:** Run `git push origin main`.
+
+4. **Report:** Provide a concise summary of committed hashes and messages.
+
+> `README.md` is not touched here; roadmap checkbox sync belongs to the `ship-release` skill (see `AGENTS.md` Section 4).
