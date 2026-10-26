@@ -101,3 +101,19 @@ Before finishing any task:
 1. Run `npx tsc --noEmit` and ensure 0 type errors.
 2. Run `npm test` and ensure all test suites pass.
 3. Ensure no secrets (like `SUPABASE_SERVICE_ROLE_KEY`) are exposed in client-accessible paths or prefixed with `NEXT_PUBLIC_`.
+
+---
+
+## 9. Lean v1.1.0 Operating Rules (Strict)
+
+### Rule 1 — Pre-Flight Audit (Ground Truth First)
+Before modifying any schemas, API routes, or UI components, always inspect `.agent/PROJECT_STATE.md`. Never re-introduce deprecated column names (`technical_definition`, `interview_answer`) or alter the calibrated retrieval thresholds (`0.65` for >2 words, `0.72` for <=2 words) or the vector dimension (`768`).
+
+### Rule 2 — Post-Flight Sync (Living State Ledger)
+Whenever a task updates schemas, API routes, or completes a milestone step, synchronously update `.agent/PROJECT_STATE.md` (Sections 4 and 5) in the exact same diff before finishing.
+
+### Rule 3 — README Discipline
+Do not modify `README.md` during incremental bug fixes or minor code tasks unless explicitly instructed or finalizing a release milestone.
+
+### Rule 4 — Verification Gate
+Run `npx tsc --noEmit`, `npm test`, and `npm run lint` after every code implementation step.

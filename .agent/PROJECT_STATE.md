@@ -84,11 +84,24 @@ Rows are filtered by `similarity >= match_threshold`, ordered by similarity desc
 
 - **v1.0.0 — MVP release.**
 - **v1.1.0 Feature 1 — Dynamic RAG Fallback & schema drift resolution.**
+- **Governance — Locked Lean v1.1.0 Product Pivot** in `AGENTS.md`, `PROJECT_STATE.md`, and `README.md` (docs only; no `src/` changes).
 
 ---
 
 ## 5. Active Roadmap
 
-- **v1.1.0 Feature 2** — Role Tracks.
-- **v1.1.0 Feature 3** — Scorecard.
+**Lean v1.1.0 Pivot**
+
+- **v1.1.0 Feature 1 (Completed):** Self-Populating Dynamic RAG Fallback (4-tier waterfall: Canonical Slug -> Alias Match -> pgvector Cosine [0.65/0.72] -> Generative Synthesis with HTTP 422 guardrail).
+- **v1.1.0 Feature 2 (Up Next — Step 1):** Project & JD Stress-Tester (pivoted from Architecture Co-Builder).
+  - Instead of generating hypothetical app ideas, accepts a candidate's real project stack/summary or target Job Description.
+  - Outputs deterministic interview defense cards via Zod schema:
+    1. `elevatorPitch`: 30-second first-person spoken intro script.
+    2. `tradeoffTraps`: 3 "Why X over Y?" comparative questions with senior first-person defense answers.
+    3. `bottleneckTraps`: 2 realistic production failure scenarios under load with concrete mitigation strategies.
+- **v1.1.0 Feature 3 (Pending — Step 2):** 3-Round Technical Grill & Senior Answer Rewrite Card (pivoted from open-ended Mock Studio).
+  - Replaces endless chat with a strict 3-question defense loop.
+  - Terminates after 3 answers and generates a structured evaluation card featuring a side-by-side diff: **"What Was Missing"** vs. **"Senior Spoken Rewrite"** (first-person, concise, <3 sentences).
+- **v1.1.0 Feature 4 (Pending — Step 3):** One-Click Pipeline Integration.
+  - Connects Module 1 (Stress-Tester) and Module 2 (RAG Explainer) directly into Module 3 (3-Round Grill) via one-click action buttons so users never have to copy-paste prompts.
 - **v2.0.0** — Platform Scale.
