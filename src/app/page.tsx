@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { useChat } from "ai/react";
+import React, { useState } from "react";
 import {
   Check,
   Copy,
@@ -13,7 +12,11 @@ import {
   Sparkles,
 } from "lucide-react";
 
-import type { ProjectDefense } from "@/lib/schemas";
+import type {
+  ProjectDefense,
+  TechnicalGrillEvaluation,
+  TechnicalGrillMessage,
+} from "@/lib/schemas";
 
 export interface TechTermResult {
   id?: number | string;
@@ -29,6 +32,13 @@ export interface TechTermResult {
 }
 
 type ActiveTab = "co-builder" | "concept-explainer" | "mock-interview";
+type GrillPhase = "IDLE" | "ACTIVE" | "EVALUATION";
+
+const ROUND_LABELS: Record<1 | 2 | 3, string> = {
+  1: "Architectural Choice & Trade-Offs",
+  2: "Scale, Concurrency & Network Partition",
+  3: "Data Integrity, Race Conditions & Edge Cases",
+};
 
 const PRESET_IDEAS = [
   {
@@ -55,97 +65,19 @@ const SEARCH_CHIPS = [
   "Vector Database",
 ];
 
-const INTERVIEW_STARTERS = [
-  {
-    label: "Full-Stack System Design",
-    prompt:
-      "Hi! I'm ready to start my Full-Stack & AI Developer mock interview. Please ask me your first technical question about Next.js App Router or React architecture.",
-  },
-  {
-    label: "RAG & pgvector Practice",
-    prompt:
-      "Let's practice RAG & Vector Embeddings. In my own words: RAG converts documents into vector embeddings stored in pgvector, retrieves semantically similar chunks for a user query, and passes them into the LLM context window to ground the answer and reduce hallucinations. How would you evaluate this explanation?",
-  },
-  {
-    label: "Database & Security",
-    prompt:
-      "I'd like to practice system design for an AI Resume Analyzer built with Next.js, Supabase, and Gemini. Ask me how I would design the ingestion pipeline, structured output validation, and database security.",
-  },
-];
-
-const INITIAL_INTERVIEW_MESSAGES = [
-  {
-    id: "welcome-interviewer-msg",
-    role: "assistant" as const,
-    content:
-      "Welcome. I'll be conducting your technical mock interview today covering Next.js, React, Supabase, APIs, RAG, and LLM integrations.\n- After each response, I'll evaluate your Technical Accuracy and Communication, offer a concise Senior Model Answer when helpful, and ask a targeted follow-up.\n- Select a starter topic or introduce yourself to begin.",
-  },
-];
-
-function renderInlineFormatting(text: string): React.ReactNode[] {
-  const segments = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-  return segments.map((segment, idx) => {
-    if (segment.startsWith("**") && segment.endsWith("**") && segment.length > 4) {
-      return (
-        <strong key={idx} className="font-medium text-zinc-100">
-          {segment.slice(2, -2)}
-        </strong>
-      );
-    }
-    if (segment.startsWith("`") && segment.endsWith("`") && segment.length > 2) {
-      return (
-        <code
-          key={idx}
-          className="rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-xs text-zinc-200"
-        >
-          {segment.slice(1, -1)}
-        </code>
-      );
-    }
-    return <React.Fragment key={idx}>{segment}</React.Fragment>;
-  });
-}
-
-function renderFormattedMessage(content: string): React.ReactNode {
-  const lines = content.split("\n");
-  return (
-    <div className="space-y-2">
-      {lines.map((rawLine, idx) => {
-        const line = rawLine.trim();
-        if (!line) {
-          return <div key={idx} className="h-1" />;
-        }
-        if (line.startsWith("- ") || line.startsWith("* ") || line.startsWith("• ")) {
-          return (
-            <div key={idx} className="flex items-start gap-2.5 pl-1">
-              <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
-              <span className="flex-1 leading-relaxed text-zinc-300">
-                {renderInlineFormatting(line.slice(2))}
-              </span>
-            </div>
-          );
-        }
-        const numberedMatch = line.match(/^(\d+)\.\s+(.*)$/);
-        if (numberedMatch) {
-          return (
-            <div key={idx} className="flex items-start gap-2.5 pl-1">
-              <span className="mt-0.5 shrink-0 font-mono text-xs text-zinc-500">
-                {numberedMatch[1]}.
-              </span>
-              <span className="flex-1 leading-relaxed text-zinc-300">
-                {renderInlineFormatting(numberedMatch[2])}
-              </span>
-            </div>
-          );
-        }
-        return (
-          <p key={idx} className="leading-relaxed text-zinc-300">
-            {renderInlineFormatting(line)}
-          </p>
-        );
-      })}
-    </div>
-  );
+function getVerdictBadgeStyle(
+  verdict: TechnicalGrillEvaluation["hiringVerdict"]
+): string {
+  switch (verdict) {
+    case "Strong Hire":
+      return "border-emerald-500/40 bg-emerald-950/50 text-emerald-300";
+    case "Hire":
+      return "border-sky-500/40 bg-sky-950/50 text-sky-300";
+    case "Lean Hire":
+      return "border-amber-500/40 bg-amber-950/50 text-amber-300";
+    case "Needs Practice":
+      return "border-rose-500/40 bg-rose-950/50 text-rose-300";
+  }
 }
 
 export default function PrepPilotDashboard() {
@@ -165,29 +97,18 @@ export default function PrepPilotDashboard() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [rejectedReason, setRejectedReason] = useState<string | null>(null);
 
-  // Technical Mock Interview State
-  const {
-    messages: interviewMessages,
-    setMessages: setInterviewMessages,
-    input: interviewInput,
-    handleInputChange: handleInterviewInputChange,
-    handleSubmit: handleInterviewSubmit,
-    append: appendInterviewMessage,
-    isLoading: isInterviewLoading,
-    error: interviewError,
-    stop: stopInterviewStream,
-  } = useChat({
-    api: "/api/mock-interview",
-    initialMessages: INITIAL_INTERVIEW_MESSAGES,
-  });
-
-  const chatEndRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (activeTab === "mock-interview") {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [interviewMessages, activeTab]);
+  // 3-Round Technical Grill State Machine (IDLE -> ACTIVE -> EVALUATION)
+  const [grillPhase, setGrillPhase] = useState<GrillPhase>("IDLE");
+  const [grillContext, setGrillContext] = useState<string>("");
+  const [grillFocusTopic, setGrillFocusTopic] = useState<string>("");
+  const [currentRound, setCurrentRound] = useState<1 | 2 | 3>(1);
+  const [currentQuestion, setCurrentQuestion] = useState<string>("");
+  const [grillAnswerInput, setGrillAnswerInput] = useState<string>("");
+  const [grillHistory, setGrillHistory] = useState<TechnicalGrillMessage[]>([]);
+  const [grillEvaluation, setGrillEvaluation] =
+    useState<TechnicalGrillEvaluation | null>(null);
+  const [isGrillLoading, setIsGrillLoading] = useState<boolean>(false);
+  const [grillError, setGrillError] = useState<string | null>(null);
 
   // Shared Clipboard State
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -202,10 +123,172 @@ export default function PrepPilotDashboard() {
     } catch {
       if (activeTab === "co-builder") {
         setError("Unable to copy to clipboard.");
-      } else {
+      } else if (activeTab === "concept-explainer") {
         setSearchError("Unable to copy to clipboard.");
+      } else {
+        setGrillError("Unable to copy to clipboard.");
       }
     }
+  };
+
+  const handleSwitchToTab = (tab: ActiveTab) => {
+    if (tab === "mock-interview" && !grillContext.trim() && prompt.trim()) {
+      setGrillContext(prompt.trim());
+    }
+    setActiveTab(tab);
+  };
+
+  const handleStartGrill = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const targetContext = (grillContext.trim() || prompt.trim()).slice(0, 2500);
+
+    if (targetContext.length < 10) {
+      setGrillError(
+        "Please enter at least 10 characters describing your project stack or target Job Description."
+      );
+      return;
+    }
+
+    setIsGrillLoading(true);
+    setGrillError(null);
+
+    try {
+      const response = await fetch("/api/grill/question", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          context: targetContext,
+          focusTopic: grillFocusTopic.trim() || undefined,
+          history: [],
+          currentRound: 1,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || typeof data?.question !== "string") {
+        setGrillError(
+          typeof data?.error === "string"
+            ? data.error
+            : "Failed to start the 3-round technical grill. Please try again."
+        );
+        return;
+      }
+
+      if (!grillContext.trim()) {
+        setGrillContext(targetContext);
+      }
+      setCurrentRound(1);
+      setCurrentQuestion(data.question);
+      setGrillHistory([{ role: "interviewer", content: data.question }]);
+      setGrillAnswerInput("");
+      setGrillEvaluation(null);
+      setGrillPhase("ACTIVE");
+    } catch {
+      setGrillError("Network error while starting the technical grill.");
+    } finally {
+      setIsGrillLoading(false);
+    }
+  };
+
+  const handleSubmitGrillAnswer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedAnswer = grillAnswerInput.trim();
+
+    if (!trimmedAnswer) {
+      setGrillError("Please provide an answer before submitting.");
+      return;
+    }
+
+    const updatedHistory: TechnicalGrillMessage[] = [
+      ...grillHistory,
+      { role: "candidate", content: trimmedAnswer },
+    ];
+
+    setIsGrillLoading(true);
+    setGrillError(null);
+
+    try {
+      if (currentRound < 3) {
+        const nextRound = (currentRound + 1) as 1 | 2 | 3;
+        const response = await fetch("/api/grill/question", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            context: grillContext.trim(),
+            focusTopic: grillFocusTopic.trim() || undefined,
+            history: updatedHistory,
+            currentRound: nextRound,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || typeof data?.question !== "string") {
+          setGrillError(
+            typeof data?.error === "string"
+              ? data.error
+              : `Failed to generate Round ${nextRound} question. Please try again.`
+          );
+          return;
+        }
+
+        setGrillHistory([
+          ...updatedHistory,
+          { role: "interviewer", content: data.question },
+        ]);
+        setCurrentRound(nextRound);
+        setCurrentQuestion(data.question);
+        setGrillAnswerInput("");
+      } else {
+        const response = await fetch("/api/grill/evaluate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            context: grillContext.trim(),
+            focusTopic: grillFocusTopic.trim() || undefined,
+            history: updatedHistory,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !Array.isArray(data?.questionBreakdowns)) {
+          setGrillError(
+            typeof data?.error === "string"
+              ? data.error
+              : "Failed to generate the final scorecard. Please try again."
+          );
+          return;
+        }
+
+        setGrillHistory(updatedHistory);
+        setGrillEvaluation(data as TechnicalGrillEvaluation);
+        setGrillAnswerInput("");
+        setGrillPhase("EVALUATION");
+      }
+    } catch {
+      setGrillError("Network error while communicating with PrepPilot server.");
+    } finally {
+      setIsGrillLoading(false);
+    }
+  };
+
+  const handleRestartGrill = () => {
+    setGrillPhase("IDLE");
+    setCurrentRound(1);
+    setCurrentQuestion("");
+    setGrillAnswerInput("");
+    setGrillHistory([]);
+    setGrillEvaluation(null);
+    setGrillError(null);
+    setIsGrillLoading(false);
   };
 
   const handleGenerateDefense = async (e?: React.FormEvent, customPrompt?: string) => {
@@ -333,7 +416,7 @@ export default function PrepPilotDashboard() {
           >
             <button
               type="button"
-              onClick={() => setActiveTab("co-builder")}
+              onClick={() => handleSwitchToTab("co-builder")}
               className={`rounded-md px-3 py-1.5 transition ${
                 activeTab === "co-builder"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
@@ -344,7 +427,7 @@ export default function PrepPilotDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("concept-explainer")}
+              onClick={() => handleSwitchToTab("concept-explainer")}
               className={`rounded-md px-3 py-1.5 transition ${
                 activeTab === "concept-explainer"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
@@ -355,14 +438,14 @@ export default function PrepPilotDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab("mock-interview")}
+              onClick={() => handleSwitchToTab("mock-interview")}
               className={`rounded-md px-3 py-1.5 transition ${
                 activeTab === "mock-interview"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
             >
-              Mock Interview
+              3-Round Grill
             </button>
           </nav>
         </div>
@@ -879,169 +962,392 @@ export default function PrepPilotDashboard() {
             )}
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Header & Reset */}
+          <div className="space-y-8">
+            {/* Header & Restart */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <h1 className="text-2xl font-semibold tracking-tight text-zinc-100 sm:text-3xl">
-                  Technical Mock Interview
+                  3-Round Technical Grill &amp; Articulation Diff
                 </h1>
-                <p className="text-sm text-zinc-400 max-w-xl leading-relaxed">
-                  Real-time technical interview simulator with structured evaluation of
-                  accuracy and communication fluency.
+                <p className="text-sm text-zinc-400 max-w-2xl leading-relaxed">
+                  Defend your architecture across 3 escalating rounds (Trade-Offs → Scale &amp;
+                  Failure → Data Integrity), then review a hiring-committee scorecard with
+                  first-person Senior Spoken Rewrites.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  stopInterviewStream();
-                  setInterviewMessages(INITIAL_INTERVIEW_MESSAGES);
-                }}
-                className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition"
-              >
-                <RotateCcw className="h-3 w-3" />
-                <span>Reset Session</span>
-              </button>
-            </div>
-
-            {/* Quick Starters */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-zinc-500 mr-1">Starters:</span>
-              {INTERVIEW_STARTERS.map((starter) => (
+              {grillPhase !== "IDLE" && (
                 <button
-                  key={starter.label}
                   type="button"
-                  disabled={isInterviewLoading}
-                  onClick={() => {
-                    void appendInterviewMessage({
-                      role: "user",
-                      content: starter.prompt,
-                    });
-                  }}
-                  className="rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition disabled:opacity-50"
+                  onClick={handleRestartGrill}
+                  disabled={isGrillLoading}
+                  className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-700 hover:text-zinc-100 transition disabled:opacity-50"
                 >
-                  {starter.label}
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Restart Grill</span>
                 </button>
-              ))}
+              )}
             </div>
 
-            {/* Chat Container */}
-            <section className="flex flex-col rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden shadow-sm">
-              {/* Chat Feed */}
-              <div
-                className="space-y-5 p-5 max-h-[520px] min-h-[360px] overflow-y-auto"
-                aria-live="polite"
-              >
-                {interviewMessages.map((msg) => {
-                  const isCandidate = msg.role === "user";
-                  const copyKey = `chat-${msg.id}`;
-                  const isCopied = copiedId === copyKey;
-
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col gap-1.5 ${
-                        isCandidate ? "items-end" : "items-start"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 px-1">
-                        <span className="font-mono text-[11px] text-zinc-500">
-                          {isCandidate ? "Candidate" : "Interviewer"}
-                        </span>
-                        {!isCandidate && msg.content && (
+            {/* STATE 1: IDLE */}
+            {grillPhase === "IDLE" && (
+              <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5 shadow-sm space-y-4">
+                <form onSubmit={(e) => void handleStartGrill(e)} className="space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label
+                        htmlFor="grill-context-input"
+                        className="text-xs font-medium text-zinc-300"
+                      >
+                        Project Summary, Stack, or Target Job Description
+                      </label>
+                      {prompt.trim().length >= 10 &&
+                        grillContext.trim() !== prompt.trim() && (
                           <button
                             type="button"
-                            onClick={() => handleCopy(msg.content, copyKey)}
-                            className="text-[11px] text-zinc-500 hover:text-zinc-300 transition"
-                            title="Copy response"
+                            onClick={() => setGrillContext(prompt.trim())}
+                            className="text-xs text-emerald-400 hover:text-emerald-300 transition"
                           >
-                            {isCopied ? "Copied" : "Copy"}
+                            Pre-fill from Stress-Tester
                           </button>
                         )}
-                      </div>
+                    </div>
+                    <textarea
+                      id="grill-context-input"
+                      rows={4}
+                      maxLength={2500}
+                      value={grillContext}
+                      onChange={(e) => setGrillContext(e.target.value)}
+                      placeholder="Paste your project stack & architecture summary or target Job Description (10–2500 characters)..."
+                      disabled={isGrillLoading}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-700 focus:outline-none resize-none leading-relaxed"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                      <span>Minimum 10 characters required</span>
+                      <span className="font-mono">
+                        {grillContext.length} / 2500 characters
+                      </span>
+                    </div>
+                  </div>
 
-                      <div
-                        className={`rounded-xl px-4 py-3 text-xs sm:text-sm leading-relaxed max-w-2xl ${
-                          isCandidate
-                            ? "bg-zinc-800 text-zinc-100 border border-zinc-700/50"
-                            : "bg-zinc-900/80 text-zinc-200 border border-zinc-800"
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="grill-focus-topic"
+                      className="text-xs font-medium text-zinc-400"
+                    >
+                      Optional Focus Topic
+                    </label>
+                    <input
+                      id="grill-focus-topic"
+                      type="text"
+                      maxLength={100}
+                      value={grillFocusTopic}
+                      onChange={(e) => setGrillFocusTopic(e.target.value)}
+                      placeholder="e.g., pgvector indexing, WebSocket state sync, Stripe webhook idempotency"
+                      disabled={isGrillLoading}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-700 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs text-zinc-500 mr-1">Presets:</span>
+                      {PRESET_IDEAS.map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          disabled={isGrillLoading}
+                          onClick={() => setGrillContext(preset.prompt)}
+                          className="rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition disabled:opacity-50"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={
+                        isGrillLoading ||
+                        (grillContext.trim() || prompt.trim()).length < 10
+                      }
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-zinc-100 px-4 py-2 text-xs font-medium text-zinc-950 transition hover:bg-zinc-200 focus:outline-none focus:ring-1 focus:ring-zinc-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isGrillLoading ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>Generating Round 1...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Start 3-Round Grill</span>
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+
+                {grillError && (
+                  <div
+                    role="alert"
+                    className="rounded-lg border border-rose-900/40 bg-rose-950/20 px-3.5 py-2.5 text-xs text-rose-300"
+                  >
+                    {grillError}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* STATE 2: ACTIVE */}
+            {grillPhase === "ACTIVE" && (
+              <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6 space-y-6 shadow-sm">
+                {/* Round Indicator Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="rounded-md border border-zinc-700 bg-zinc-800 px-2.5 py-1 font-mono text-xs font-semibold text-zinc-100">
+                      Round {currentRound} of 3
+                    </span>
+                    <span className="text-xs font-medium text-zinc-400">
+                      {ROUND_LABELS[currentRound]}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {[1, 2, 3].map((step) => (
+                      <span
+                        key={step}
+                        className={`h-1.5 w-8 rounded-full transition ${
+                          step < currentRound
+                            ? "bg-emerald-500"
+                            : step === currentRound
+                              ? "bg-zinc-100"
+                              : "bg-zinc-800"
                         }`}
-                      >
-                        {msg.content ? (
-                          isCandidate ? (
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
-                          ) : (
-                            renderFormattedMessage(msg.content)
-                          )
-                        ) : (
-                          <div className="flex items-center gap-2 text-zinc-400 text-xs">
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                            <span>Evaluating response...</span>
-                          </div>
-                        )}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Active Interviewer Question Bubble */}
+                <div className="space-y-2">
+                  <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                    Staff Interviewer Question
+                  </span>
+                  <div className="rounded-xl border border-zinc-700/80 bg-zinc-950 p-4 sm:p-5 text-sm sm:text-base text-zinc-100 leading-relaxed">
+                    {currentQuestion}
+                  </div>
+                </div>
+
+                {/* Candidate Answer Input Form */}
+                <form
+                  onSubmit={(e) => void handleSubmitGrillAnswer(e)}
+                  className="space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <label
+                      htmlFor="grill-candidate-answer"
+                      className="font-mono text-[11px] uppercase tracking-wider text-zinc-400"
+                    >
+                      Your Spoken Defense Answer
+                    </label>
+                    <span className="font-mono text-xs text-zinc-500">
+                      {grillAnswerInput.length} / 2000 characters
+                    </span>
+                  </div>
+
+                  <textarea
+                    id="grill-candidate-answer"
+                    rows={5}
+                    maxLength={2000}
+                    value={grillAnswerInput}
+                    onChange={(e) => setGrillAnswerInput(e.target.value)}
+                    placeholder="Write your defense in first-person ('I chose...', 'Under load, the bottleneck is...'). Mention concrete mechanisms and trade-offs..."
+                    disabled={isGrillLoading}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/90 p-3.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-zinc-700 focus:outline-none resize-none leading-relaxed"
+                  />
+
+                  {grillError && (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-rose-900/40 bg-rose-950/20 px-3.5 py-2.5 text-xs text-rose-300"
+                    >
+                      {grillError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isGrillLoading || !grillAnswerInput.trim()}
+                      className="inline-flex items-center gap-2 rounded-lg bg-zinc-100 px-4 py-2.5 text-xs font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isGrillLoading ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          <span>
+                            {currentRound < 3
+                              ? `Preparing Round ${currentRound + 1}...`
+                              : "Generating Scorecard..."}
+                          </span>
+                        </>
+                      ) : currentRound < 3 ? (
+                        <>
+                          <span>Submit Answer &amp; Continue</span>
+                          <Send className="h-3 w-3" />
+                        </>
+                      ) : (
+                        <>
+                          <span>Submit &amp; Generate Scorecard</span>
+                          <Sparkles className="h-3.5 w-3.5" />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </section>
+            )}
+
+            {/* STATE 3: EVALUATION */}
+            {grillPhase === "EVALUATION" && grillEvaluation && (
+              <div className="space-y-6">
+                {/* Scorecard Summary Banner */}
+                <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 sm:p-6 space-y-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">
+                    <div className="space-y-1">
+                      <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                        Hiring Committee Scorecard
+                      </span>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-2xl font-bold tracking-tight text-zinc-50 font-mono">
+                          {grillEvaluation.overallScore} / 10
+                        </span>
+                        <span
+                          className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${getVerdictBadgeStyle(
+                            grillEvaluation.hiringVerdict
+                          )}`}
+                        >
+                          {grillEvaluation.hiringVerdict}
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
-                <div ref={chatEndRef} />
+
+                    <button
+                      type="button"
+                      onClick={handleRestartGrill}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-3.5 py-2 text-xs font-medium text-zinc-100 hover:bg-zinc-800 transition"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      <span>Restart Grill</span>
+                    </button>
+                  </div>
+
+                  {/* Summary Feedback Callout */}
+                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-4 space-y-1">
+                    <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                      Committee Summary Feedback
+                    </span>
+                    <p className="text-sm text-zinc-200 leading-relaxed">
+                      {grillEvaluation.summaryFeedback}
+                    </p>
+                  </div>
+                </section>
+
+                {/* Side-by-Side Comparison Cards for Each Round */}
+                <div className="space-y-5">
+                  {grillEvaluation.questionBreakdowns.map((item, idx) => {
+                    const candidateTurns = grillHistory.filter(
+                      (m) => m.role === "candidate"
+                    );
+                    const rawCandidateAnswer =
+                      candidateTurns[idx]?.content ?? item.candidateAnswerSummary;
+                    const copyKey = `grill-rewrite-${item.round}-${idx}`;
+
+                    return (
+                      <article
+                        key={`round-breakdown-${item.round}-${idx}`}
+                        className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6 space-y-4"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                          <span className="rounded bg-zinc-800 px-2.5 py-0.5 font-mono text-xs font-semibold text-zinc-200 border border-zinc-700">
+                            Round {item.round} of 3
+                          </span>
+                          <span className="text-xs text-zinc-400">
+                            {ROUND_LABELS[(item.round as 1 | 2 | 3) ?? 1]}
+                          </span>
+                        </div>
+
+                        {/* Interrogated Question */}
+                        <div className="space-y-1">
+                          <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-400">
+                            Interrogated Question
+                          </span>
+                          <p className="text-sm font-medium text-zinc-100 leading-relaxed">
+                            &ldquo;{item.question}&rdquo;
+                          </p>
+                        </div>
+
+                        {/* Candidate's Raw Answer */}
+                        <div className="rounded-lg border border-zinc-800/90 bg-zinc-950/70 p-3.5 space-y-1">
+                          <span className="font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                            Candidate&apos;s Raw Answer
+                          </span>
+                          <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                            {rawCandidateAnswer}
+                          </p>
+                        </div>
+
+                        {/* Side-by-Side Articulation Diff */}
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {/* What Was Missing (Soft Amber/Red) */}
+                          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-2">
+                            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                              🎯 What Was Missing
+                            </span>
+                            <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
+                              {item.whatWasMissing}
+                            </p>
+                          </div>
+
+                          {/* Senior Spoken Rewrite (Emerald/Blue) */}
+                          <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/25 p-4 space-y-2 flex flex-col justify-between">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
+                                  🎙️ Senior Spoken Rewrite
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleCopy(item.seniorSpokenRewrite, copyKey)
+                                  }
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-emerald-500/40 bg-emerald-900/40 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-900/70 transition"
+                                >
+                                  {copiedId === copyKey ? (
+                                    <>
+                                      <Check className="h-3 w-3" />
+                                      <span>Copied</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="h-3 w-3" />
+                                      <span>Copy Script</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                              <p className="text-xs sm:text-sm text-zinc-100 leading-relaxed">
+                                &ldquo;{item.seniorSpokenRewrite}&rdquo;
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
-
-              {/* Chat Error */}
-              {interviewError && (
-                <div
-                  role="alert"
-                  className="mx-5 mb-3 rounded-lg border border-rose-900/40 bg-rose-950/20 px-3.5 py-2 text-xs text-rose-300"
-                >
-                  {interviewError.message}
-                </div>
-              )}
-
-              {/* Chat Input Console */}
-              <form
-                onSubmit={(e) => {
-                  void handleInterviewSubmit(e);
-                }}
-                className="border-t border-zinc-800 bg-zinc-950 p-3 sm:p-4"
-              >
-                <div className="flex items-end gap-2">
-                  <label htmlFor="mock-interview-input" className="sr-only">
-                    Interview answer
-                  </label>
-                  <textarea
-                    id="mock-interview-input"
-                    rows={2}
-                    value={interviewInput}
-                    onChange={handleInterviewInputChange}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        if (!isInterviewLoading && interviewInput.trim()) {
-                          void handleInterviewSubmit();
-                        }
-                      }
-                    }}
-                    placeholder="Articulate your response (Press Enter to send, Shift+Enter for new line)..."
-                    disabled={isInterviewLoading}
-                    className="w-full resize-none bg-transparent p-2 text-xs sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isInterviewLoading || !interviewInput.trim()}
-                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-zinc-100 px-3.5 text-xs font-medium text-zinc-950 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isInterviewLoading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <>
-                        <span>Send</span>
-                        <Send className="h-3 w-3" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </section>
+            )}
           </div>
         )}
       </main>

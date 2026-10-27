@@ -179,3 +179,101 @@ export type RejectedSynthesis = Extract<DynamicSynthesisResult, { isValidTerm: f
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchTermsRequest = z.infer<typeof searchTermsRequestSchema>;
 
+export const technicalGrillInitSchema = z.object({
+  context: z
+    .string()
+    .trim()
+    .min(10)
+    .max(2500)
+    .describe("Project summary, stack, or target Job Description"),
+  focusTopic: z.string().trim().max(100).optional(),
+});
+
+export const technicalGrillMessageSchema = z.object({
+  role: z.enum(["interviewer", "candidate"]),
+  content: z.string().trim().min(1).max(2000),
+});
+
+export const technicalGrillTurnSchema = z.object({
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["interviewer", "candidate"]),
+        content: z.string().max(2000),
+      })
+    )
+    .min(1)
+    .max(6),
+  currentRound: z.number().int().min(1).max(3),
+});
+
+export const technicalGrillQuestionRequestSchema = technicalGrillInitSchema
+  .extend({
+    history: z
+      .array(
+        z.object({
+          role: z.enum(["interviewer", "candidate"]),
+          content: z.string().max(2000),
+        })
+      )
+      .max(6)
+      .default([]),
+    currentRound: z.number().int().min(1).max(3),
+  })
+  .refine((data) => data.currentRound === 1 || data.history.length >= 1, {
+    message: "Conversation history is required for rounds 2 and 3.",
+    path: ["history"],
+  });
+
+export const technicalGrillEvaluateRequestSchema = z.object({
+  context: z.string().trim().min(10).max(2500).optional(),
+  focusTopic: z.string().trim().max(100).optional(),
+  history: technicalGrillTurnSchema.shape.history,
+});
+
+export const technicalGrillEvaluationSchema = z.object({
+  overallScore: z.number().int().min(1).max(10),
+  hiringVerdict: z.enum([
+    "Strong Hire",
+    "Hire",
+    "Lean Hire",
+    "Needs Practice",
+  ]),
+  summaryFeedback: z.string().max(600),
+  questionBreakdowns: z
+    .array(
+      z.object({
+        round: z.number().int().min(1).max(3),
+        question: z.string().max(500),
+        candidateAnswerSummary: z.string().max(500),
+        whatWasMissing: z
+          .string()
+          .max(450)
+          .describe(
+            "1-2 sentences pinpointing technical omissions or passive phrasing"
+          ),
+        seniorSpokenRewrite: z
+          .string()
+          .max(800)
+          .describe(
+            "2-3 sentences written in first-person spoken English demonstrating how a Senior/Staff engineer phrases the exact same answer using concrete trade-offs"
+          ),
+      })
+    )
+    .length(3),
+});
+
+export type TechnicalGrillInit = z.infer<typeof technicalGrillInitSchema>;
+export type TechnicalGrillMessage = z.infer<typeof technicalGrillMessageSchema>;
+export type TechnicalGrillTurn = z.infer<typeof technicalGrillTurnSchema>;
+export type TechnicalGrillQuestionRequest = z.infer<
+  typeof technicalGrillQuestionRequestSchema
+>;
+export type TechnicalGrillEvaluateRequest = z.infer<
+  typeof technicalGrillEvaluateRequestSchema
+>;
+export type TechnicalGrillEvaluation = z.infer<
+  typeof technicalGrillEvaluationSchema
+>;
+
+
