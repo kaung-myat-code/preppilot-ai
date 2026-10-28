@@ -110,12 +110,30 @@ describe("projectDefenseSchema", () => {
 });
 
 describe("projectDefenseRequestSchema", () => {
-  it("accepts and trims a valid prompt", () => {
+  it("accepts and trims a valid prompt and defaults mode to 'project'", () => {
     const result = projectDefenseRequestSchema.safeParse({
       prompt: "   Next.js 14, Supabase pgvector   ",
     });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.prompt).toBe("Next.js 14, Supabase pgvector");
+    if (result.success) {
+      expect(result.data.prompt).toBe("Next.js 14, Supabase pgvector");
+      expect(result.data.mode).toBe("project");
+    }
+  });
+
+  it("accepts explicit mode 'jd' and 'project' and rejects invalid mode", () => {
+    const jdResult = projectDefenseRequestSchema.safeParse({
+      prompt: "Senior Backend Engineer — Go, PostgreSQL, Kafka",
+      mode: "jd",
+    });
+    expect(jdResult.success).toBe(true);
+    if (jdResult.success) expect(jdResult.data.mode).toBe("jd");
+
+    const invalidResult = projectDefenseRequestSchema.safeParse({
+      prompt: "Senior Backend Engineer — Go, PostgreSQL, Kafka",
+      mode: "resume",
+    });
+    expect(invalidResult.success).toBe(false);
   });
 
   it("rejects prompts under 10 characters (after trimming)", () => {

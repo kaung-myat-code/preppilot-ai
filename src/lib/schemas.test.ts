@@ -1,9 +1,22 @@
 import { describe, it, expect } from "vitest";
 import {
   technicalGrillInitSchema,
+  technicalGrillQuestionRequestSchema,
+  technicalGrillEvaluateRequestSchema,
   technicalGrillTurnSchema,
   technicalGrillEvaluationSchema,
 } from "@/lib/schemas";
+import {
+  getStressTestSystemPrompt,
+  sanitizeCoBuilderPrompt,
+} from "@/app/api/co-builder/route";
+import { getGrillQuestionSystemPrompt } from "@/app/api/grill/question/route";
+import {
+  GEMINI_FALLBACK_MODELS,
+  isQuotaOrRateLimitError,
+  QUOTA_EXHAUSTED_ERROR_MESSAGE,
+  runWithGeminiFallback,
+} from "@/lib/gemini";
 
 const validEvaluation = {
   overallScore: 8,
@@ -78,6 +91,233 @@ describe("technicalGrillInitSchema", () => {
         focusTopic: "x".repeat(101),
       }).success
     ).toBe(false);
+  });
+
+  it("defaults grillType to 'project' and accepts 'concept' and 'jd'", () => {
+    const defaultParsed = technicalGrillQuestionRequestSchema.safeParse({
+      context: "Concept: Idempotency Key in distributed systems.",
+      currentRound: 1,
+    });
+    expect(defaultParsed.success).toBe(true);
+    if (defaultParsed.success) {
+      expect(defaultParsed.data.grillType).toBe("project");
+    }
+
+    const conceptParsed = technicalGrillQuestionRequestSchema.safeParse({
+      context: "Concept: Idempotency Key in distributed systems.",
+      focusTopic: "Idempotency Key",
+      grillType: "concept",
+      currentRound: 1,
+    });
+    expect(conceptParsed.success).toBe(true);
+    if (conceptParsed.success) {
+      expect(conceptParsed.data.grillType).toBe("concept");
+    }
+
+    const jdInitParsed = technicalGrillInitSchema.safeParse({
+      context: "Target Role: Senior Backend Engineer Interview Prep",
+      focusTopic: "Senior Backend Engineer Interview Prep",
+      grillType: "jd",
+    });
+    expect(jdInitParsed.success).toBe(true);
+    if (jdInitParsed.success) {
+      expect(jdInitParsed.data.grillType).toBe("jd");
+    }
+
+    const jdQuestionParsed = technicalGrillQuestionRequestSchema.safeParse({
+      context: "Target Role: Senior Backend Engineer Interview Prep",
+      focusTopic: "Senior Backend Engineer Interview Prep",
+      grillType: "jd",
+      currentRound: 1,
+    });
+    expect(jdQuestionParsed.success).toBe(true);
+    if (jdQuestionParsed.success) {
+      expect(jdQuestionParsed.data.grillType).toBe("jd");
+    }
+
+    const jdEvaluateParsed = technicalGrillEvaluateRequestSchema.safeParse({
+      context: "Target Role: Senior Backend Engineer Interview Prep",
+      focusTopic: "Senior Backend Engineer Interview Prep",
+      grillType: "jd",
+      history: [
+        { role: "interviewer", content: "Q1" },
+        { role: "candidate", content: "A1" },
+      ],
+    });
+    expect(jdEvaluateParsed.success).toBe(true);
+    if (jdEvaluateParsed.success) {
+      expect(jdEvaluateParsed.data.grillType).toBe("jd");
+    }
+
+    const invalidParsed = technicalGrillQuestionRequestSchema.safeParse({
+      context: "Concept: Idempotency Key in distributed systems.",
+      grillType: "behavioral",
+      currentRound: 1,
+    });
+    expect(invalidParsed.success).toBe(false);
+  });
+
+  it("separates system prompts for project vs jd and concept vs project vs jd grill", () => {
+    expect(getStressTestSystemPrompt("project")).toContain(
+      "defending the candidate's actual architecture and personal implementation decisions"
+    );
+    const jdPrompt = getStressTestSystemPrompt("jd");
+    expect(jdPrompt).toContain(
+      "interview coach analyzing a company's hiring requirements"
+    );
+    expect(jdPrompt).toContain(
+      "IGNORE non-technical company fluff, perks, benefits, and DEI disclaimers."
+    );
+    expect(jdPrompt).toContain("[Extracted Role Name] Interview Prep");
+    expect(jdPrompt).toContain("STRICTLY FORBID phrases like 'I built this project/platform'");
+
+    expect(getGrillQuestionSystemPrompt("concept")).toContain(
+      "Do NOT say 'in your project'"
+    );
+    expect(getGrillQuestionSystemPrompt("project")).toContain(
+      "The candidate is defending their own project"
+    );
+    const jdGrillPrompt = getGrillQuestionSystemPrompt("jd");
+    expect(jdGrillPrompt).toContain(
+      "The candidate is interviewing for a specific Job Description / Role."
+    );
+    expect(jdGrillPrompt).toContain(
+      "DO NOT assume the candidate built a project called this."
+    );
+    expect(jdGrillPrompt).toContain(
+      "Act as the hiring manager / tech lead interviewing the candidate for this target role."
+    );
+  });
+
+  it("clamps co-builder input prompt to 1,500 characters after trimming", () => {
+    const rawJd = `   ${"x".repeat(2200)}   `;
+    const clamped = sanitizeCoBuilderPrompt(rawJd);
+    expect(clamped.length).toBe(1500);
+    expect(sanitizeCoBuilderPrompt("  Short valid JD  ")).toBe("Short valid JD");
+  });
+});
+
+describe("Gemini Fallback Cascade & Quota Detection", () => {
+  it("cascades from gemini-3.5-flash-lite to gemini-3.1-flash-lite with maxRetries: 0 and abortSignal", async () => {
+    const attemptedModels: string[] = [];
+    const seenMaxRetries: number[] = [];
+    const result = await runWithGeminiFallback(
+      async (_model, modelId, config) => {
+        attemptedModels.push(modelId);
+        seenMaxRetries.push(config.maxRetries);
+        expect(config.abortSignal).toBeInstanceOf(AbortSignal);
+        if (modelId === "gemini-3.5-flash-lite") {
+          const err = new Error(
+            "AI_APICallError: You exceeded your current quota, limit: 500, model: gemini-3.5-flash-lite"
+          ) as Error & { status: number };
+          err.status = 429;
+          throw err;
+        }
+        return `success-from-${modelId}`;
+      }
+    );
+
+    expect(result).toBe("success-from-gemini-3.1-flash-lite");
+    expect(attemptedModels).toEqual([
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+    ]);
+    expect(seenMaxRetries).toEqual([0, 0]);
+  });
+
+  it("fails over immediately on 404 (deprecated model) and 429 (quota exceeded)", async () => {
+    const attemptedModels: string[] = [];
+    const result = await runWithGeminiFallback(
+      async (_model, modelId) => {
+        attemptedModels.push(modelId);
+        if (modelId === "gemini-3.5-flash-lite") {
+          const err = new Error(
+            "models/gemini-3.5-flash-lite is not found for API version v1beta"
+          ) as Error & { status: number };
+          err.status = 404;
+          throw err;
+        }
+        if (modelId === "gemini-3.1-flash-lite") {
+          const err = new Error(
+            "Resource has been exhausted (e.g. check quota)."
+          ) as Error & { status: number };
+          err.status = 429;
+          throw err;
+        }
+        return `recovered-by-${modelId}`;
+      }
+    );
+
+    expect(result).toBe("recovered-by-gemini-3.8-flash");
+    expect(attemptedModels).toEqual([
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.8-flash",
+    ]);
+  });
+
+  it("aborts a hanging model attempt on timeout and fails over to the next candidate", async () => {
+    const attemptedModels: string[] = [];
+    const result = await runWithGeminiFallback(
+      async (_model, modelId) => {
+        attemptedModels.push(modelId);
+        if (modelId === "gemini-3.5-flash-lite") {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        return `fast-from-${modelId}`;
+      },
+      ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"],
+      30
+    );
+
+    expect(result).toBe("fast-from-gemini-3.1-flash-lite");
+    expect(attemptedModels).toEqual([
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+    ]);
+  });
+
+  it("identifies 429, 404, quota, and timeout errors accurately via isQuotaOrRateLimitError", () => {
+    expect(
+      isQuotaOrRateLimitError(
+        new Error("You exceeded your current quota (RESOURCE_EXHAUSTED)")
+      )
+    ).toBe(true);
+    expect(isQuotaOrRateLimitError({ statusCode: 429, message: "Too many requests" })).toBe(
+      true
+    );
+    expect(
+      isQuotaOrRateLimitError({
+        statusCode: 404,
+        message: "models/gemini-2.5-flash-lite is not found",
+      })
+    ).toBe(true);
+    expect(
+      isQuotaOrRateLimitError({
+        name: "TimeoutError",
+        message: "Model attempt timed out after 12000ms",
+      })
+    ).toBe(true);
+    expect(
+      isQuotaOrRateLimitError({
+        message: "AI_RetryError",
+        lastError: new Error("Quota exceeded for metric"),
+      })
+    ).toBe(true);
+    expect(isQuotaOrRateLimitError(new Error("Invalid JSON syntax"))).toBe(
+      false
+    );
+    expect(QUOTA_EXHAUSTED_ERROR_MESSAGE).toBe(
+      "Daily AI quota exhausted across all available model tiers. Please try again tomorrow or provide your own API key."
+    );
+    expect(GEMINI_FALLBACK_MODELS).toEqual([
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite",
+      "gemini-3.8-flash",
+      "gemini-3.6-flash",
+      "gemini-3-flash-preview",
+      "gemini-2.5-flash",
+    ]);
   });
 });
 
