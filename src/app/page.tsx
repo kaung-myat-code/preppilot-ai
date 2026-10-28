@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 
 import type {
+  GrillType,
   ProjectDefense,
+  StressTestMode,
   TechnicalGrillEvaluation,
   TechnicalGrillMessage,
 } from "@/lib/schemas";
@@ -31,7 +33,7 @@ export interface TechTermResult {
   autoIndexed?: boolean;
 }
 
-type ActiveTab = "co-builder" | "concept-explainer" | "mock-interview";
+type ActiveTab = "stress-tester" | "explainer" | "grill";
 type GrillPhase = "IDLE" | "ACTIVE" | "EVALUATION";
 
 const ROUND_LABELS: Record<1 | 2 | 3, string> = {
@@ -39,6 +41,39 @@ const ROUND_LABELS: Record<1 | 2 | 3, string> = {
   2: "Scale, Concurrency & Network Partition",
   3: "Data Integrity, Race Conditions & Edge Cases",
 };
+
+function deriveRoundSearchTopic(
+  item: TechnicalGrillEvaluation["questionBreakdowns"][number],
+  focusTopic: string
+): string {
+  const cleanedMissing = item.whatWasMissing
+    .replace(/[`"']/g, "")
+    .replace(
+      /^(?:the\s+candidate\s+|candidate\s+|you\s+)?(?:used\s+passive\s+phrasing\s+(?:and\s+)?|spoke\s+passively\s+(?:and\s+)?)?(?:omitted|missed(?:\s+how)?|failed\s+to\s+(?:mention|explain|address|cite|specify)|did\s+not\s+(?:mention|explain|distinguish|address|cover|specify)|lacked(?:\s+concrete|\s+specific)?|overlooked)\s+/i,
+      ""
+    )
+    .split(
+      /[.;,]|(?:\s+(?:and\s+the|where|when|which|that|to\s+prevent|to\s+avoid|avoids|during|under\s+load)\s+)/i
+    )[0]
+    ?.trim();
+
+  const rawTopic =
+    cleanedMissing &&
+    cleanedMissing.length >= 4 &&
+    !/^passive\s+phrasing/i.test(cleanedMissing)
+      ? cleanedMissing
+      : focusTopic.trim() ||
+        ROUND_LABELS[(item.round as 1 | 2 | 3) ?? 1] ||
+        item.question.trim();
+
+  if (rawTopic.length <= 60) {
+    return rawTopic;
+  }
+
+  const sliced = rawTopic.slice(0, 60);
+  const lastSpace = sliced.lastIndexOf(" ");
+  return (lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced).trim();
+}
 
 const PRESET_IDEAS = [
   {
@@ -55,6 +90,19 @@ const PRESET_IDEAS = [
     label: "Node.js + PostgreSQL FinTech Payment API",
     prompt:
       "Node.js with Express, PostgreSQL, Redis, Stripe webhooks. A FinTech payment API handling idempotent charges, double-entry ledger records, and reconciliation jobs at 500 requests per second.",
+  },
+];
+
+const PRESET_JDS = [
+  {
+    label: "Senior Backend Engineer — FinTech Payments",
+    prompt:
+      "Target Role: Senior Backend Engineer (Payments Infrastructure). Requirements: 5+ years with Go or TypeScript/Node.js, PostgreSQL, Kafka, and Redis. Must design high-throughput idempotent payment pipelines, double-entry ledgers, webhook delivery with exponential backoff, and zero-downtime schema migrations.",
+  },
+  {
+    label: "Full-Stack AI Engineer — B2B SaaS",
+    prompt:
+      "Target Role: Full-Stack AI Engineer. Requirements: Next.js App Router, TypeScript, PostgreSQL with pgvector, and LLM orchestration (Vercel AI SDK / Gemini / OpenAI). Build low-latency RAG retrieval pipelines, structured output guardrails, and multi-tenant RBAC.",
   },
 ];
 
@@ -81,9 +129,11 @@ function getVerdictBadgeStyle(
 }
 
 export default function PrepPilotDashboard() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("co-builder");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("stress-tester");
 
   // Project & JD Stress-Tester State
+  const [stressTestMode, setStressTestMode] =
+    useState<StressTestMode>("project");
   const [prompt, setPrompt] = useState<string>("");
   const [defense, setDefense] = useState<ProjectDefense | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -99,6 +149,7 @@ export default function PrepPilotDashboard() {
 
   // 3-Round Technical Grill State Machine (IDLE -> ACTIVE -> EVALUATION)
   const [grillPhase, setGrillPhase] = useState<GrillPhase>("IDLE");
+  const [activeGrillType, setActiveGrillType] = useState<GrillType>("project");
   const [grillContext, setGrillContext] = useState<string>("");
   const [grillFocusTopic, setGrillFocusTopic] = useState<string>("");
   const [currentRound, setCurrentRound] = useState<1 | 2 | 3>(1);
@@ -121,9 +172,9 @@ export default function PrepPilotDashboard() {
         setCopiedId((prev) => (prev === id ? null : prev));
       }, 2000);
     } catch {
-      if (activeTab === "co-builder") {
+      if (activeTab === "stress-tester") {
         setError("Unable to copy to clipboard.");
-      } else if (activeTab === "concept-explainer") {
+      } else if (activeTab === "explainer") {
         setSearchError("Unable to copy to clipboard.");
       } else {
         setGrillError("Unable to copy to clipboard.");
@@ -132,15 +183,35 @@ export default function PrepPilotDashboard() {
   };
 
   const handleSwitchToTab = (tab: ActiveTab) => {
-    if (tab === "mock-interview" && !grillContext.trim() && prompt.trim()) {
-      setGrillContext(prompt.trim());
+    if (tab === "grill" && !grillContext.trim() && prompt.trim()) {
+      const clamped =
+        stressTestMode === "jd"
+          ? prompt.trim().slice(0, 1500)
+          : prompt.trim().slice(0, 2500);
+      setGrillContext(clamped);
+      setActiveGrillType(stressTestMode === "jd" ? "jd" : "project");
     }
     setActiveTab(tab);
   };
 
-  const handleStartGrill = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const targetContext = (grillContext.trim() || prompt.trim()).slice(0, 2500);
+  const fetchQuestion = async (
+    round: 1 | 2 | 3,
+    overrideContext?: string,
+    overrideFocusTopic?: string,
+    historyForRound?: TechnicalGrillMessage[],
+    overrideGrillType?: GrillType
+  ) => {
+    const targetContext = (
+      overrideContext ??
+      (grillContext.trim() || prompt.trim())
+    )
+      .trim()
+      .slice(0, 2500);
+    const rawFocus =
+      overrideFocusTopic !== undefined ? overrideFocusTopic : grillFocusTopic;
+    const targetFocusTopic = rawFocus.trim().slice(0, 100) || undefined;
+    const targetHistory = historyForRound ?? (round === 1 ? [] : grillHistory);
+    const targetGrillType: GrillType = overrideGrillType ?? activeGrillType;
 
     if (targetContext.length < 10) {
       setGrillError(
@@ -160,9 +231,10 @@ export default function PrepPilotDashboard() {
         },
         body: JSON.stringify({
           context: targetContext,
-          focusTopic: grillFocusTopic.trim() || undefined,
-          history: [],
-          currentRound: 1,
+          focusTopic: targetFocusTopic,
+          grillType: targetGrillType,
+          history: targetHistory,
+          currentRound: round,
         }),
       });
 
@@ -172,25 +244,77 @@ export default function PrepPilotDashboard() {
         setGrillError(
           typeof data?.error === "string"
             ? data.error
-            : "Failed to start the 3-round technical grill. Please try again."
+            : round === 1
+              ? "Failed to start the 3-round technical grill. Please try again."
+              : `Failed to generate Round ${round} question. Please try again.`
         );
         return;
       }
 
-      if (!grillContext.trim()) {
+      if (round === 1) {
         setGrillContext(targetContext);
+        setActiveGrillType(targetGrillType);
+        if (overrideFocusTopic !== undefined) {
+          setGrillFocusTopic(rawFocus.trim().slice(0, 100));
+        }
+        setCurrentRound(1);
+        setCurrentQuestion(data.question);
+        setGrillHistory([{ role: "interviewer", content: data.question }]);
+        setGrillAnswerInput("");
+        setGrillEvaluation(null);
+        setGrillPhase("ACTIVE");
+      } else {
+        setGrillHistory([
+          ...targetHistory,
+          { role: "interviewer", content: data.question },
+        ]);
+        setCurrentRound(round);
+        setCurrentQuestion(data.question);
+        setGrillAnswerInput("");
       }
-      setCurrentRound(1);
-      setCurrentQuestion(data.question);
-      setGrillHistory([{ role: "interviewer", content: data.question }]);
-      setGrillAnswerInput("");
-      setGrillEvaluation(null);
-      setGrillPhase("ACTIVE");
     } catch {
-      setGrillError("Network error while starting the technical grill.");
+      setGrillError(
+        round === 1
+          ? "Network error while starting the technical grill."
+          : "Network error while communicating with PrepPilot server."
+      );
     } finally {
       setIsGrillLoading(false);
     }
+  };
+
+  const handleLaunchGrillWithContext = (
+    contextText: string,
+    focusTopic?: string,
+    grillType: "project" | "concept" | "jd" = "project"
+  ) => {
+    const normalizedContext = contextText.trim().slice(0, 2500);
+    const normalizedFocus = (focusTopic ?? "").trim().slice(0, 100);
+
+    setGrillContext(normalizedContext);
+    setGrillFocusTopic(normalizedFocus);
+    setActiveGrillType(grillType);
+    setActiveTab("grill");
+
+    if (isGrillLoading) {
+      return;
+    }
+
+    setGrillPhase("IDLE");
+    setCurrentRound(1);
+    setCurrentQuestion("");
+    setGrillAnswerInput("");
+    setGrillHistory([]);
+    setGrillEvaluation(null);
+    setGrillError(null);
+
+    void fetchQuestion(1, normalizedContext, normalizedFocus, [], grillType);
+  };
+
+  const handleStartGrill = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setActiveGrillType("project");
+    await fetchQuestion(1, undefined, undefined, undefined, "project");
   };
 
   const handleSubmitGrillAnswer = async (e?: React.FormEvent) => {
@@ -207,72 +331,50 @@ export default function PrepPilotDashboard() {
       { role: "candidate", content: trimmedAnswer },
     ];
 
+    if (currentRound < 3) {
+      const nextRound = (currentRound + 1) as 1 | 2 | 3;
+      await fetchQuestion(
+        nextRound,
+        grillContext.trim(),
+        grillFocusTopic,
+        updatedHistory,
+        activeGrillType
+      );
+      return;
+    }
+
     setIsGrillLoading(true);
     setGrillError(null);
 
     try {
-      if (currentRound < 3) {
-        const nextRound = (currentRound + 1) as 1 | 2 | 3;
-        const response = await fetch("/api/grill/question", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            context: grillContext.trim(),
-            focusTopic: grillFocusTopic.trim() || undefined,
-            history: updatedHistory,
-            currentRound: nextRound,
-          }),
-        });
+      const response = await fetch("/api/grill/evaluate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          context: grillContext.trim(),
+          focusTopic: grillFocusTopic.trim() || undefined,
+          grillType: activeGrillType,
+          history: updatedHistory,
+        }),
+      });
 
-        const data = await response.json();
+      const data = await response.json();
 
-        if (!response.ok || typeof data?.question !== "string") {
-          setGrillError(
-            typeof data?.error === "string"
-              ? data.error
-              : `Failed to generate Round ${nextRound} question. Please try again.`
-          );
-          return;
-        }
-
-        setGrillHistory([
-          ...updatedHistory,
-          { role: "interviewer", content: data.question },
-        ]);
-        setCurrentRound(nextRound);
-        setCurrentQuestion(data.question);
-        setGrillAnswerInput("");
-      } else {
-        const response = await fetch("/api/grill/evaluate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            context: grillContext.trim(),
-            focusTopic: grillFocusTopic.trim() || undefined,
-            history: updatedHistory,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !Array.isArray(data?.questionBreakdowns)) {
-          setGrillError(
-            typeof data?.error === "string"
-              ? data.error
-              : "Failed to generate the final scorecard. Please try again."
-          );
-          return;
-        }
-
-        setGrillHistory(updatedHistory);
-        setGrillEvaluation(data as TechnicalGrillEvaluation);
-        setGrillAnswerInput("");
-        setGrillPhase("EVALUATION");
+      if (!response.ok || !Array.isArray(data?.questionBreakdowns)) {
+        setGrillError(
+          typeof data?.error === "string"
+            ? data.error
+            : "Failed to generate the final scorecard. Please try again."
+        );
+        return;
       }
+
+      setGrillHistory(updatedHistory);
+      setGrillEvaluation(data as TechnicalGrillEvaluation);
+      setGrillAnswerInput("");
+      setGrillPhase("EVALUATION");
     } catch {
       setGrillError("Network error while communicating with PrepPilot server.");
     } finally {
@@ -282,6 +384,7 @@ export default function PrepPilotDashboard() {
 
   const handleRestartGrill = () => {
     setGrillPhase("IDLE");
+    setActiveGrillType("project");
     setCurrentRound(1);
     setCurrentQuestion("");
     setGrillAnswerInput("");
@@ -291,12 +394,23 @@ export default function PrepPilotDashboard() {
     setIsGrillLoading(false);
   };
 
-  const handleGenerateDefense = async (e?: React.FormEvent, customPrompt?: string) => {
+  const handleGenerateDefense = async (
+    e?: React.FormEvent,
+    customPrompt?: string,
+    overrideMode?: StressTestMode
+  ) => {
     if (e) e.preventDefault();
-    const targetPrompt = (customPrompt ?? prompt).trim();
+    const rawPrompt = (customPrompt ?? prompt).trim();
+    const targetMode = overrideMode ?? stressTestMode;
+    const targetPrompt =
+      targetMode === "jd" && rawPrompt.length > 1500
+        ? rawPrompt.slice(0, 1500)
+        : rawPrompt;
 
     if (targetPrompt.length < 10) {
-      setError("Please enter at least 10 characters describing your project or the job description.");
+      setError(
+        "Please enter at least 10 characters describing your project or the job description."
+      );
       return;
     }
 
@@ -304,12 +418,12 @@ export default function PrepPilotDashboard() {
     setError(null);
 
     try {
-      const response = await fetch("/api/generate-blueprint", {
+      const response = await fetch("/api/co-builder", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ prompt: targetPrompt }),
+        body: JSON.stringify({ prompt: targetPrompt, mode: targetMode }),
       });
 
       const data = await response.json();
@@ -416,9 +530,9 @@ export default function PrepPilotDashboard() {
           >
             <button
               type="button"
-              onClick={() => handleSwitchToTab("co-builder")}
+              onClick={() => handleSwitchToTab("stress-tester")}
               className={`rounded-md px-3 py-1.5 transition ${
-                activeTab === "co-builder"
+                activeTab === "stress-tester"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
@@ -427,9 +541,9 @@ export default function PrepPilotDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => handleSwitchToTab("concept-explainer")}
+              onClick={() => handleSwitchToTab("explainer")}
               className={`rounded-md px-3 py-1.5 transition ${
-                activeTab === "concept-explainer"
+                activeTab === "explainer"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
@@ -438,9 +552,9 @@ export default function PrepPilotDashboard() {
             </button>
             <button
               type="button"
-              onClick={() => handleSwitchToTab("mock-interview")}
+              onClick={() => handleSwitchToTab("grill")}
               className={`rounded-md px-3 py-1.5 transition ${
-                activeTab === "mock-interview"
+                activeTab === "grill"
                   ? "bg-zinc-800 text-zinc-100 shadow-sm"
                   : "text-zinc-400 hover:text-zinc-200"
               }`}
@@ -453,7 +567,7 @@ export default function PrepPilotDashboard() {
 
       {/* Main Content Area */}
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
-        {activeTab === "co-builder" ? (
+        {activeTab === "stress-tester" ? (
           <div className="space-y-8">
             {/* Header Description */}
             <div className="space-y-2">
@@ -468,36 +582,101 @@ export default function PrepPilotDashboard() {
             </div>
 
             {/* Input Console */}
-            <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-sm focus-within:border-zinc-700 transition">
+            <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 shadow-sm focus-within:border-zinc-700 transition space-y-3">
+              {/* 2-Way Mode Toggle (Project vs JD) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/80 pb-3">
+                <div
+                  role="group"
+                  aria-label="Stress-Tester Input Mode"
+                  className="inline-flex items-center rounded-lg border border-zinc-800 bg-zinc-950/90 p-0.5 text-xs font-medium"
+                >
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    aria-pressed={stressTestMode === "project"}
+                    onClick={() => setStressTestMode("project")}
+                    className={`rounded-md px-3 py-1.5 transition ${
+                      stressTestMode === "project"
+                        ? "bg-zinc-800 text-zinc-100 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    💻 My Project Stack
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    aria-pressed={stressTestMode === "jd"}
+                    onClick={() => setStressTestMode("jd")}
+                    className={`rounded-md px-3 py-1.5 transition ${
+                      stressTestMode === "jd"
+                        ? "bg-zinc-800 text-zinc-100 shadow-sm"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    📄 Target Job Description
+                  </button>
+                </div>
+
+                <span className="text-[11px] text-zinc-500">
+                  {stressTestMode === "jd"
+                    ? "Coach mode: Role fit pitch & predicted JD probes"
+                    : "Defense mode: Defend your personal architecture"}
+                </span>
+              </div>
+
               <form onSubmit={(e) => handleGenerateDefense(e)} className="space-y-3">
                 <label htmlFor="project-prompt" className="sr-only">
-                  Project stack or Job Description
+                  {stressTestMode === "jd"
+                    ? "Target Job Description"
+                    : "My Project Stack"}
                 </label>
                 <textarea
                   id="project-prompt"
                   rows={4}
-                  maxLength={2500}
+                  maxLength={stressTestMode === "jd" ? undefined : 2500}
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Paste your project stack & summary (e.g., 'Next.js 14, Supabase pgvector, Gemini 2.5 interview prep platform') or a target Job Description..."
+                  placeholder={
+                    stressTestMode === "jd"
+                      ? "Paste a target Job Description or role requirements (e.g., 'Senior Backend Engineer — Go/Node.js, PostgreSQL, Kafka, high-throughput payments')..."
+                      : "Paste your project stack & summary (e.g., 'Next.js 14, Supabase pgvector, Gemini 2.5 interview prep platform')..."
+                  }
                   className="w-full bg-transparent text-sm sm:text-base text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed"
                   disabled={isLoading}
                 />
 
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500">
+                  {stressTestMode === "jd" ? (
+                    <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-950/30 px-2 py-0.5 text-amber-300/90">
+                      ⚡ Optimized for LLM quota: Analyzing key requirements (up to 1,500 chars).
+                    </span>
+                  ) : (
+                    <span>Minimum 10 characters required</span>
+                  )}
+                  <span className="font-mono">
+                    {stressTestMode === "jd"
+                      ? `${Math.min(prompt.length, 1500)} / 1,500 chars`
+                      : `${prompt.length} / 2,500 chars`}
+                  </span>
+                </div>
+
                 <div className="flex flex-col gap-3 pt-2 border-t border-zinc-800/80 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-xs text-zinc-500 mr-1">Try:</span>
-                    {PRESET_IDEAS.map((preset) => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        disabled={isLoading}
-                        onClick={() => setPrompt(preset.prompt)}
-                        className="rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition disabled:opacity-50"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+                    {(stressTestMode === "jd" ? PRESET_JDS : PRESET_IDEAS).map(
+                      (preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => setPrompt(preset.prompt)}
+                          className="rounded-md border border-zinc-800 bg-zinc-900/40 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-200 transition disabled:opacity-50"
+                        >
+                          {preset.label}
+                        </button>
+                      )
+                    )}
                   </div>
 
                   <button
@@ -508,11 +687,19 @@ export default function PrepPilotDashboard() {
                     {isLoading ? (
                       <>
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        <span>Stress-testing...</span>
+                        <span>
+                          {stressTestMode === "jd"
+                            ? "Analyzing JD..."
+                            : "Stress-testing..."}
+                        </span>
                       </>
                     ) : (
                       <>
-                        <span>Stress-Test My Project</span>
+                        <span>
+                          {stressTestMode === "jd"
+                            ? "Analyze Job Description"
+                            : "Stress-Test My Project"}
+                        </span>
                         <ArrowUpRight className="h-3.5 w-3.5" />
                       </>
                     )}
@@ -546,7 +733,9 @@ export default function PrepPilotDashboard() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="space-y-2">
                       <span className="font-mono text-[11px] tracking-wider uppercase text-emerald-400">
-                        🎙️ 30-Second Spoken Elevator Pitch
+                        {stressTestMode === "jd"
+                          ? "🎙️ 30-Second Role Fit Pitch"
+                          : "🎙️ 30-Second Spoken Elevator Pitch"}
                       </span>
                       <h2 className="text-lg font-semibold text-zinc-50 tracking-tight">
                         {defense.projectTitle}
@@ -578,7 +767,9 @@ export default function PrepPilotDashboard() {
                 {/* 2. Trade-Off Traps */}
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold text-zinc-100">
-                    ⚔️ &quot;Why X Over Y?&quot; Trade-Off Traps
+                    {stressTestMode === "jd"
+                      ? "⚔️ Predicted Hiring Team Technical Probes"
+                      : '⚔️ "Why X Over Y?" Trade-Off Traps'}
                   </h2>
                   {defense.tradeoffTraps.map((trap, index) => {
                     const copyKey = `defense-trap-${index}`;
@@ -633,7 +824,9 @@ export default function PrepPilotDashboard() {
                 {/* 3. Production Bottlenecks */}
                 <section className="space-y-3">
                   <h2 className="text-sm font-semibold text-zinc-100">
-                    💥 Production Bottlenecks &amp; Failure Modes
+                    {stressTestMode === "jd"
+                      ? "💥 Domain Scalability & Reliability Challenges"
+                      : "💥 Production Bottlenecks & Failure Modes"}
                   </h2>
                   {defense.bottleneckTraps.map((trap, index) => {
                     const copyKey = `defense-bottleneck-${index}`;
@@ -681,10 +874,47 @@ export default function PrepPilotDashboard() {
                     );
                   })}
                 </section>
+
+                {/* Module 1 -> Module 3 Pipeline Action Button */}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={isGrillLoading}
+                    onClick={() => {
+                      const mode: GrillType =
+                        stressTestMode === "jd" ? "jd" : "project";
+                      const defenseResult = defense;
+                      const handoffContext =
+                        mode === "jd"
+                          ? `Target Role: ${defenseResult.projectTitle}
+Candidate Alignment: ${defenseResult.elevatorPitch}
+Required Technologies: ${defenseResult.tradeoffTraps.map((t) => `${t.layer}: ${t.chosenTech}`).join(", ")}
+Key Production Challenges: ${defenseResult.bottleneckTraps.map((b) => b.failureScenario).join(" | ")}`
+                          : `Candidate Project: ${defenseResult.projectTitle}
+Summary: ${defenseResult.elevatorPitch}
+Chosen Technologies: ${defenseResult.tradeoffTraps.map((t) => `${t.layer}: ${t.chosenTech}`).join(", ")}
+Potential Bottlenecks: ${defenseResult.bottleneckTraps.map((b) => b.failureScenario).join(" | ")}`;
+
+                      handleLaunchGrillWithContext(
+                        handoffContext,
+                        defenseResult.projectTitle,
+                        mode
+                      );
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-5 py-3.5 text-sm font-semibold text-amber-200 shadow-sm transition hover:bg-amber-500/25 hover:border-amber-500/60 focus:outline-none focus:ring-2 focus:ring-amber-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span>
+                      {stressTestMode === "jd"
+                        ? "🎯 Practice Interview for This Role (Start 3-Round Grill)"
+                        : "🔥 Practice Defending This Stack (Start 3-Round Grill)"}
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0" />
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        ) : activeTab === "concept-explainer" ? (
+        ) : activeTab === "explainer" ? (
           <div className="space-y-8">
             {/* Header Description */}
             <div className="space-y-2">
@@ -943,6 +1173,37 @@ export default function PrepPilotDashboard() {
                             )}
                         </div>
                       )}
+
+                      {/* Module 2 -> Module 3 Pipeline Action Button */}
+                      <div className="flex items-center justify-end border-t border-zinc-800/80 pt-3">
+                        <button
+                          type="button"
+                          disabled={isGrillLoading}
+                          onClick={() => {
+                            const conceptContext = [
+                              `Concept: ${result.term}`,
+                              resolvedDefinition
+                                ? `Technical Definition: ${resolvedDefinition}`
+                                : null,
+                              resolvedInterviewText
+                                ? `Interview Answer: ${resolvedInterviewText}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join("\n");
+
+                            handleLaunchGrillWithContext(
+                              conceptContext,
+                              result.term,
+                              "concept"
+                            );
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-3.5 py-2 text-xs font-medium text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 focus:outline-none focus:ring-1 focus:ring-zinc-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <span>🎯 Grill Me on This Concept</span>
+                          <ArrowUpRight className="h-3.5 w-3.5 shrink-0" />
+                        </button>
+                      </div>
                     </section>
                   );
                 })}
@@ -1002,10 +1263,19 @@ export default function PrepPilotDashboard() {
                         Project Summary, Stack, or Target Job Description
                       </label>
                       {prompt.trim().length >= 10 &&
-                        grillContext.trim() !== prompt.trim() && (
+                        grillContext.trim() !==
+                          (stressTestMode === "jd"
+                            ? prompt.trim().slice(0, 1500)
+                            : prompt.trim().slice(0, 2500)) && (
                           <button
                             type="button"
-                            onClick={() => setGrillContext(prompt.trim())}
+                            onClick={() =>
+                              setGrillContext(
+                                stressTestMode === "jd"
+                                  ? prompt.trim().slice(0, 1500)
+                                  : prompt.trim().slice(0, 2500)
+                              )
+                            }
                             className="text-xs text-emerald-400 hover:text-emerald-300 transition"
                           >
                             Pre-fill from Stress-Tester
@@ -1104,9 +1374,24 @@ export default function PrepPilotDashboard() {
               <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 sm:p-6 space-y-6 shadow-sm">
                 {/* Round Indicator Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/80 pb-4">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="rounded-md border border-zinc-700 bg-zinc-800 px-2.5 py-1 font-mono text-xs font-semibold text-zinc-100">
                       Round {currentRound} of 3
+                    </span>
+                    <span
+                      className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                        activeGrillType === "concept"
+                          ? "border-sky-500/40 bg-sky-950/40 text-sky-300"
+                          : activeGrillType === "jd"
+                            ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300"
+                            : "border-amber-500/40 bg-amber-950/40 text-amber-300"
+                      }`}
+                    >
+                      {activeGrillType === "concept"
+                        ? "🎯 Concept Drill"
+                        : activeGrillType === "jd"
+                          ? "📄 Role / JD Interview"
+                          : "💻 Project Defense"}
                     </span>
                     <span className="text-xs font-medium text-zinc-400">
                       {ROUND_LABELS[currentRound]}
@@ -1300,13 +1585,33 @@ export default function PrepPilotDashboard() {
                         {/* Side-by-Side Articulation Diff */}
                         <div className="grid gap-4 sm:grid-cols-2">
                           {/* What Was Missing (Soft Amber/Red) */}
-                          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-2">
-                            <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-amber-300">
-                              🎯 What Was Missing
-                            </span>
-                            <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
-                              {item.whatWasMissing}
-                            </p>
+                          <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-4 space-y-3 flex flex-col justify-between">
+                            <div className="space-y-2">
+                              <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-amber-300">
+                                🎯 What Was Missing
+                              </span>
+                              <p className="text-xs sm:text-sm text-amber-100/90 leading-relaxed">
+                                {item.whatWasMissing}
+                              </p>
+                            </div>
+                            <div className="pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const roundTopic = deriveRoundSearchTopic(
+                                    item,
+                                    grillFocusTopic
+                                  );
+                                  setSearchQuery(roundTopic);
+                                  setActiveTab("explainer");
+                                  void handleSearchTerms(undefined, roundTopic);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-900/30 px-2.5 py-1 text-[11px] font-medium text-amber-200 transition hover:border-amber-400/60 hover:bg-amber-900/50"
+                              >
+                                <span>🔍 Look up in RAG Knowledge Base</span>
+                                <ArrowUpRight className="h-3 w-3 shrink-0" />
+                              </button>
+                            </div>
                           </div>
 
                           {/* Senior Spoken Rewrite (Emerald/Blue) */}

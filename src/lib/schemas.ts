@@ -59,8 +59,12 @@ export const projectDefenseSchema = z.object({
     .describe("Exactly 2 production bottleneck failure scenarios"),
 });
 
+export const stressTestModeSchema = z.enum(["project", "jd"]);
+export type StressTestMode = z.infer<typeof stressTestModeSchema>;
+
 export const projectDefenseRequestSchema = z.object({
   prompt: z.string().trim().min(10).max(2500),
+  mode: stressTestModeSchema.default("project"),
 });
 
 export type ProjectDefense = z.infer<typeof projectDefenseSchema>;
@@ -179,14 +183,18 @@ export type RejectedSynthesis = Extract<DynamicSynthesisResult, { isValidTerm: f
 export type SearchResult = z.infer<typeof searchResultSchema>;
 export type SearchTermsRequest = z.infer<typeof searchTermsRequestSchema>;
 
+export const grillTypeSchema = z.enum(["project", "concept", "jd"]);
+export type GrillType = z.infer<typeof grillTypeSchema>;
+
 export const technicalGrillInitSchema = z.object({
   context: z
     .string()
     .trim()
     .min(10)
     .max(2500)
-    .describe("Project summary, stack, or target Job Description"),
+    .describe("Project summary, stack, concept definition, or target Job Description"),
   focusTopic: z.string().trim().max(100).optional(),
+  grillType: grillTypeSchema.default("project"),
 });
 
 export const technicalGrillMessageSchema = z.object({
@@ -228,6 +236,7 @@ export const technicalGrillQuestionRequestSchema = technicalGrillInitSchema
 export const technicalGrillEvaluateRequestSchema = z.object({
   context: z.string().trim().min(10).max(2500).optional(),
   focusTopic: z.string().trim().max(100).optional(),
+  grillType: grillTypeSchema.default("project"),
   history: technicalGrillTurnSchema.shape.history,
 });
 

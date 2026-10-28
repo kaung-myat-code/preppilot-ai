@@ -9,6 +9,11 @@ import {
   type SearchResult,
   type TechTermCategory,
 } from "@/lib/schemas";
+import {
+  isQuotaOrRateLimitError,
+  QUOTA_EXHAUSTED_ERROR_MESSAGE,
+  runWithGeminiFallback,
+} from "@/lib/gemini";
 
 export interface MatchedTechTerm {
   id: number | string;
@@ -173,7 +178,9 @@ export async function POST(req: NextRequest) {
     // Fast-path: Match against canonical_key
     const { data: directHit } = await supabaseAdmin
       .from("tech_terms")
-      .select("*")
+      .select(
+        "id, term, category, definition, interview_context, tradeoffs, common_pitfalls, analogy"
+      )
       .eq("canonical_key", canonicalQuery)
       .maybeSingle();
 
@@ -311,19 +318,15 @@ When isValidTerm is true, provide:
       temperature: 0.3,
     };
 
-    let synthesized;
-    try {
-      ({ output: synthesized } = await generateText({
-        model: google("gemini-2.5-flash"),
-        ...synthesisOptions,
-        maxRetries: 1,
-      }));
-    } catch {
-      ({ output: synthesized } = await generateText({
-        model: google("gemini-flash-latest"),
-        ...synthesisOptions,
-      }));
-    }
+    const { output: synthesized } = await runWithGeminiFallback(
+      (model, _modelId, { maxRetries, abortSignal }) =>
+        generateText({
+          model,
+          ...synthesisOptions,
+          maxRetries,
+          abortSignal,
+        })
+    );
 
     // Semantic guardrail: abort before any embedding or database mutation.
     if (!synthesized.isValidTerm) {
@@ -357,14 +360,15 @@ When isValidTerm is true, provide:
           analogy: resolvedAnalogy,
           definition: synthesized.definition,
           interview_context: synthesized.interviewContext,
-          ["interview_" + "answer"]: synthesized.interviewContext,
           tradeoffs: synthesized.tradeoffs,
           common_pitfalls: synthesized.commonPitfalls,
           embedding: conceptEmbedding,
         },
         { onConflict: "term" }
       )
-      .select()
+      .select(
+        "id, term, category, definition, interview_context, tradeoffs, common_pitfalls, analogy"
+      )
       .single();
 
     if (upsertError) {
@@ -408,6 +412,12 @@ When isValidTerm is true, provide:
       "Error in /api/search-terms:",
       error instanceof Error ? error.message : "Unknown error"
     );
+    if (isQuotaOrRateLimitError(error)) {
+      return NextResponse.json(
+        { error: QUOTA_EXHAUSTED_ERROR_MESSAGE },
+        { status: 429, headers: SECURITY_HEADERS }
+      );
+    }
     return NextResponse.json(
       {
         error:

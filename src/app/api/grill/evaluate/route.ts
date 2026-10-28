@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateText, Output } from "ai";
-import { google } from "@ai-sdk/google";
 import {
   technicalGrillEvaluateRequestSchema,
   technicalGrillEvaluationSchema,
 } from "@/lib/schemas";
+import {
+  isQuotaOrRateLimitError,
+  QUOTA_EXHAUSTED_ERROR_MESSAGE,
+  runWithGeminiFallback,
+} from "@/lib/gemini";
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { context, focusTopic, history } = parsedBody.data;
+  const { context, focusTopic, grillType, history } = parsedBody.data;
   const candidateTurns = history.filter((m) => m.role === "candidate");
   const interviewerTurns = history.filter((m) => m.role === "interviewer");
 
@@ -86,7 +90,14 @@ export async function POST(req: NextRequest) {
     .join("\n\n");
 
   const prompt = [
-    context ? `Project / JD Context:\n"""\n${context}\n"""` : null,
+    `Grill Mode: ${
+      grillType === "concept"
+        ? "Concept Drill (evaluating mastery of a core engineering concept/pattern, underlying mechanics, and production trade-offs)"
+        : grillType === "jd"
+          ? "Role / JD Interview (evaluating candidate readiness for a target job description, practical depth on required technologies, and production system design)"
+          : "Project Defense (evaluating defense of the candidate's architecture and implementation decisions)"
+    }`,
+    context ? `Context:\n"""\n${context}\n"""` : null,
     focusTopic ? `Focus Topic: """${focusTopic}"""` : null,
     `3-Round Technical Grill Transcript:\n"""\n${formattedRounds}\n"""`,
     "Evaluate all 3 rounds and produce the structured hiring-committee scorecard now.",
@@ -95,17 +106,28 @@ export async function POST(req: NextRequest) {
     .join("\n\n");
 
   try {
-    const { output } = await generateText({
-      model: google("gemini-2.5-flash"),
-      output: Output.object({ schema: technicalGrillEvaluationSchema }),
-      system: SYSTEM_PROMPT,
-      prompt,
-      temperature: 0.3,
-    });
+    const { output } = await runWithGeminiFallback(
+      (model, _modelId, { maxRetries, abortSignal }) =>
+        generateText({
+          model,
+          output: Output.object({ schema: technicalGrillEvaluationSchema }),
+          system: SYSTEM_PROMPT,
+          prompt,
+          temperature: 0.3,
+          maxRetries,
+          abortSignal,
+        })
+    );
 
     return NextResponse.json(output, { status: 200, headers: SECURITY_HEADERS });
   } catch (error) {
     console.error("Technical Grill Evaluation Error:", error);
+    if (isQuotaOrRateLimitError(error)) {
+      return NextResponse.json(
+        { error: QUOTA_EXHAUSTED_ERROR_MESSAGE },
+        { status: 429, headers: SECURITY_HEADERS }
+      );
+    }
     return NextResponse.json(
       {
         error:
