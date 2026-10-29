@@ -122,6 +122,11 @@ When automated verification gates (`npm test`, `npx tsc --noEmit`, `npm run lint
   5. `gemini-3-flash-preview` (20 RPD)
   6. `gemini-2.5-flash` (Last fallback - 20 RPD)
   Removed deprecated `gemini-2.5-flash-lite` (HTTP 404) and all 0-quota models (`gemini-2.5-pro`, `gemini-2-flash`). Configured immediate failover on 429 quota exhaustion and 404 deprecated model errors with `maxRetries: 0` and 12-second attempt timeout via `AbortSignal.timeout(12000)`. Tested and verified across all test suites.
+- **Build Pipeline & Route Handler Contract Remediation (Diagnosed via `consultative-debugger`):**
+  1. **Self-Hosted Local Fonts (`src/app/fonts/`, `src/app/layout.tsx`):** Resolved build failure caused by `next/font/google` remote fetching timeouts in offline/sandboxed environments. Self-hosted local variable WOFF2 files (`GeistVF.woff2`, `GeistMonoVF.woff2`) using `next/font/local`.
+  2. **App Router Route Handler Export Boundaries (`src/lib/prompts.ts`, `src/app/api/`):** Resolved TS2344 route typing compilation error. App Router `route.ts` files must strictly export HTTP verbs; helper utilities (`getStressTestSystemPrompt`, `sanitizeCoBuilderPrompt`, `getGrillQuestionSystemPrompt`) were extracted into a dedicated `src/lib/prompts.ts` module.
+  3. **Webpack Production Build (`package.json`):** Updated `"build": "next build --webpack"` to bypass experimental Turbopack child-process IPC panics on CSS evaluation. 100% verified across `npx tsc --noEmit`, `npm test`, `npm run lint`, and `npm run build`.
+- **Dynamic RAG Synthesis Upsert Constraint Fix (`src/app/api/search-terms/route.ts`):** Resolved HTTP 500 error on fallback dynamic term synthesis where Supabase threw `null value in column "interview_answer" of relation "tech_terms" violates not-null constraint`. Mapped `interview_answer` with fallback guard (`interview_answer || interviewAnswer || interviewContext || definition || fallbackModelAnswer`) alongside `definition` and `interview_context`, and updated logging to `console.error('[search-terms upsert error]', upsertError)`. Live-verified via dev server with dynamic indexing of term `"Docker"` returning HTTP 200 (`autoIndexed: true`) and subsequent cache hit (`autoIndexed: false`).
 
 ---
 

@@ -350,6 +350,19 @@ When isValidTerm is true, provide:
     });
 
     const resolvedAnalogy = synthesized.analogy ?? "";
+    const resolvedDefinition =
+      synthesized.definition ||
+      (synthesized as unknown as { technical_definition?: string; technicalDefinition?: string }).technical_definition ||
+      (synthesized as unknown as { technical_definition?: string; technicalDefinition?: string }).technicalDefinition ||
+      "";
+
+    // Fallback guard: ensure interview_answer is never empty to prevent not-null constraint violation in Postgres
+    const resolvedInterviewAnswer =
+      (synthesized as unknown as { interview_answer?: string; interviewAnswer?: string }).interview_answer ||
+      (synthesized as unknown as { interview_answer?: string; interviewAnswer?: string }).interviewAnswer ||
+      synthesized.interviewContext ||
+      resolvedDefinition ||
+      "In production, this concept is applied to optimize system design and scalability.";
 
     const { data: inserted, error: upsertError } = await supabaseAdmin
       .from("tech_terms")
@@ -358,8 +371,9 @@ When isValidTerm is true, provide:
           term: synthesized.term,
           category: synthesized.category,
           analogy: resolvedAnalogy,
-          definition: synthesized.definition,
+          definition: resolvedDefinition,
           interview_context: synthesized.interviewContext,
+          interview_answer: resolvedInterviewAnswer,
           tradeoffs: synthesized.tradeoffs,
           common_pitfalls: synthesized.commonPitfalls,
           embedding: conceptEmbedding,
@@ -372,10 +386,7 @@ When isValidTerm is true, provide:
       .single();
 
     if (upsertError) {
-      console.error(
-        "Supabase admin upsert error in search-terms fallback:",
-        upsertError.message
-      );
+      console.error("[search-terms upsert error]", upsertError);
       return NextResponse.json(
         {
           error: "Failed to index synthesized technical concept into the vector database.",
