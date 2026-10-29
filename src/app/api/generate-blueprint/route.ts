@@ -1,5 +1,1 @@
-export {
-  POST,
-  getStressTestSystemPrompt,
-  sanitizeCoBuilderPrompt,
-} from "@/app/api/co-builder/route";
+export { POST } from "@/app/api/co-builder/route";

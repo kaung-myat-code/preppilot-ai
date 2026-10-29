@@ -9,8 +9,8 @@ import {
 import {
   getStressTestSystemPrompt,
   sanitizeCoBuilderPrompt,
-} from "@/app/api/co-builder/route";
-import { getGrillQuestionSystemPrompt } from "@/app/api/grill/question/route";
+  getGrillQuestionSystemPrompt,
+} from "@/lib/prompts";
 import {
   GEMINI_FALLBACK_MODELS,
   isQuotaOrRateLimitError,
