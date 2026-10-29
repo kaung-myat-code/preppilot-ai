@@ -163,13 +163,15 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - [x] **Feature 1 — Self-Populating Dynamic RAG Fallback:**
   - 4-tier waterfall: Canonical Slug → Alias Match → `pgvector` Cosine (`0.65` for >2 words / `0.72` for <=2 words) → Generative Synthesis with an HTTP 422 guardrail.
   - New concepts are embedded (768 dimensions) and indexed for future users.
-- [ ] **Feature 2 (Up Next) — Project & JD Stress-Tester:**
-  - Accepts a real project stack/summary or target Job Description.
-  - Outputs an `elevatorPitch`, 3 `tradeoffTraps` ("Why X over Y?"), and 2 `bottleneckTraps` (production failures under load with mitigations).
-- [ ] **Feature 3 — 3-Round Technical Grill & Senior Answer Rewrite Card:**
-  - Strict 3-question defense loop that ends with an evaluation card showing "What Was Missing" vs. "Senior Spoken Rewrite".
-- [ ] **Feature 4 — One-Click Pipeline Integration:**
-  - Sends output from the Stress-Tester and Concept Explainer straight into the 3-Round Grill, with no copy-pasting.
+- [x] **Feature 2 — Project & JD Stress-Tester:**
+  - Accepts a real project stack/summary or target Job Description with explicit `mode: 'project' | 'jd'` separation and 1,500-char input clamping.
+  - Outputs an `elevatorPitch`, 3 `tradeoffTraps` ("Why X over Y?"), and 2 `bottleneckTraps` (production failures under load with concrete mitigations).
+- [x] **Feature 3 — 3-Round Technical Grill & Senior Answer Rewrite Card:**
+  - Strict 3-question defense loop supporting `'project' | 'concept' | 'jd'` grillTypes that terminates with an evaluation card showing "What Was Missing" vs. "Senior Spoken Rewrite".
+- [x] **Feature 4 — One-Click Cross-Module Pipeline Integration:**
+  - Sends output from the Stress-Tester and Concept Explainer straight into the 3-Round Grill, with zero copy-pasting.
+- [x] **Resilient Gemini Fallback Cascade:**
+  - Active Google AI Studio rate-limit model cascade (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3-flash-preview`, `gemini-2.5-flash`) with `maxRetries: 0`, 12-second abort timeouts, and immediate failover on 429/404 errors.
 
 ---
 
