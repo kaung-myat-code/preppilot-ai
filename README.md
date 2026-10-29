@@ -17,14 +17,14 @@
 
 🔗 **Live demo:** [https://preppilot-ai-eight.vercel.app/](https://preppilot-ai-eight.vercel.app/)
 
-<!-- ### Blueprint Builder
-![Blueprint Builder](./public/screenshots/blueprint-builder.png)
+### Blueprint Builder
+![Project & JD Stress-Tester](./public/screenshots/stress-tester.png)
 
 ### Concept Explainer
 ![Concept Explainer](./public/screenshots/concept-explainer.png)
 
-### Mock Interview
-![Mock Interview](./public/screenshots/mock-interview.png) -->
+### 3-Round Grill & Senior Rewrite
+![3-Round Grill & Senior Rewrite](./public/screenshots/mock-interview.png)
 
 ---
 
