@@ -17,7 +17,7 @@
 
 🔗 **Live demo:** [https://preppilot-ai-eight.vercel.app/](https://preppilot-ai-eight.vercel.app/)
 
-### Blueprint Builder
+### Project & JD Stress-Tester
 ![Project & JD Stress-Tester](./public/screenshots/stress-tester.png)
 
 ### Concept Explainer
