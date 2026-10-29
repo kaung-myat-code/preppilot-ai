@@ -1,6 +1,6 @@
 # 🚀 PrepPilot AI
 
-> **An Autonomous Technical Interview Preparation & Architecture Defense Platform powered by Google Gemini 2.5 Flash & Supabase pgvector.**
+> **An Autonomous Technical Interview Preparation & Architecture Defense Platform powered by Multi-Tier Resilient Google Gemini Cascade (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-2.5-flash`) with sub-second failover and zero-retry quota protection & Supabase pgvector.**
 
 [![Live on Vercel](https://img.shields.io/badge/Vercel-Live_Demo-black?style=flat&logo=vercel)](https://preppilot-ai-eight.vercel.app/)
 [![CI](https://github.com/kaung-myat-code/preppilot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/kaung-myat-code/preppilot-ai/actions/workflows/ci.yml)
@@ -86,7 +86,7 @@ Engineers preparing for technical interviews frequently hit these bottlenecks:
 * **Framework:** Next.js 14+ (App Router, React Server Components, Server Actions)
 * **Language:** TypeScript
 * **Styling:** Tailwind CSS, Lucide React
-* **AI & LLM Services:** Google Gemini 2.5 Flash via `@ai-sdk/google` and `ai` (Vercel AI SDK)
+* **AI & LLM Services:** Multi-Tier Resilient Google Gemini Cascade (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-2.5-flash`) with sub-second failover and zero-retry quota protection via `@ai-sdk/google` and `ai` (Vercel AI SDK)
 * **Database & Auth:** Supabase (PostgreSQL, Supabase Auth, Row Level Security, `pgvector`)
 * **Validation:** Zod Schema Validation
 * **Testing & Quality Gates:** Vitest, ESLint, TypeScript `strict`
@@ -197,4 +197,4 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ---
 
 ## 📄 License
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](./LICENSE).
