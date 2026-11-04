@@ -15,6 +15,11 @@ import {
   QUOTA_EXHAUSTED_ERROR_MESSAGE,
   runWithGeminiFallback,
 } from "@/lib/gemini";
+import {
+  grillLimiter,
+  getClientIp,
+  checkRateLimit,
+} from "@/lib/ratelimit";
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -23,7 +28,48 @@ const SECURITY_HEADERS = {
 };
 
 export async function POST(req: NextRequest) {
-  // TODO(security): Enforce user authentication and per-IP/per-user rate limiting in production.
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON payload." },
+      { status: 400, headers: SECURITY_HEADERS }
+    );
+  }
+
+  const bodyRecord =
+    typeof rawBody === "object" && rawBody !== null
+      ? (rawBody as Record<string, unknown>)
+      : {};
+  const round = Number(bodyRecord.currentRound ?? bodyRecord.round ?? 1);
+
+  if (round === 1) {
+    const clientIp = getClientIp(req);
+    const { success, remaining, resetInSeconds } = await checkRateLimit(
+      grillLimiter,
+      clientIp
+    );
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          error:
+            "Rate limit exceeded: Maximum 4 Mock Grill sessions per hour reached. Please try again later.",
+          resetInSeconds,
+        },
+        {
+          status: 429,
+          headers: {
+            ...SECURITY_HEADERS,
+            "Retry-After": String(resetInSeconds),
+            "X-RateLimit-Remaining": String(remaining),
+          },
+        }
+      );
+    }
+  }
+
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     console.error("GOOGLE_GENERATIVE_AI_API_KEY is not configured.");
     return NextResponse.json(
@@ -32,16 +78,6 @@ export async function POST(req: NextRequest) {
           "Server configuration error: GOOGLE_GENERATIVE_AI_API_KEY is not set in environment variables.",
       },
       { status: 500, headers: SECURITY_HEADERS }
-    );
-  }
-
-  let rawBody: unknown;
-  try {
-    rawBody = await req.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON payload." },
-      { status: 400, headers: SECURITY_HEADERS }
     );
   }
 

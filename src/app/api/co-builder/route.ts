@@ -13,6 +13,11 @@ import {
   QUOTA_EXHAUSTED_ERROR_MESSAGE,
   runWithGeminiFallback,
 } from "@/lib/gemini";
+import {
+  stressTestLimiter,
+  getClientIp,
+  checkRateLimit,
+} from "@/lib/ratelimit";
 
 const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
@@ -21,7 +26,30 @@ const SECURITY_HEADERS = {
 };
 
 export async function POST(req: NextRequest) {
-  // TODO(security): Enforce user authentication and per-IP/per-user rate limiting in production.
+  const clientIp = getClientIp(req);
+  const { success, remaining, resetInSeconds } = await checkRateLimit(
+    stressTestLimiter,
+    clientIp
+  );
+
+  if (!success) {
+    return NextResponse.json(
+      {
+        error:
+          "Rate limit exceeded: Maximum 5 Architecture Blueprints per hour reached.",
+        resetInSeconds,
+      },
+      {
+        status: 429,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Retry-After": String(resetInSeconds),
+          "X-RateLimit-Remaining": String(remaining),
+        },
+      }
+    );
+  }
+
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     console.error("GOOGLE_GENERATIVE_AI_API_KEY is not configured.");
     return NextResponse.json(

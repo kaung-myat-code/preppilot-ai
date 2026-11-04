@@ -11,12 +11,19 @@
 | Framework | Next.js 14+ App Router only (no `pages/`) |
 | Language | TypeScript `strict`; no `any` (use `unknown`) |
 | Database | Supabase PostgreSQL + `pgvector`, accessed via `@supabase/ssr` cookie handler |
+| Rate Limiting | Upstash Serverless Redis (`@upstash/ratelimit`, `@upstash/redis`): Sliding Window, HTTP/REST transport, fail-open resilience |
 | LLM | Google AI Studio rate-limit cascade via `@ai-sdk/google`: `gemini-3.5-flash-lite` (500 RPD) -> `gemini-3.1-flash-lite` (500 RPD) -> `gemini-3.8-flash` (20 RPD) -> `gemini-3.6-flash` (20 RPD) -> `gemini-3-flash-preview` (20 RPD) -> `gemini-2.5-flash` (20 RPD fallback) |
 | Embeddings | `gemini-embedding-001`, **768 dimensions** (`outputDimensionality: 768`) |
 | AI SDK | Vercel AI SDK (`ai`): `generateObject` / `streamObject` with Zod schemas; never raw `JSON.parse()` on LLM text |
 
+**Rate Limiting & Abuse Prevention**
+- **Infrastructure:** Upstash Serverless Redis (`@upstash/ratelimit`, `@upstash/redis`).
+  - **Algorithm:** Sliding Window (prevents boundary-burst attacks).
+  - **Transport:** Stateless HTTP/REST (eliminates serverless TCP connection pooling exhaustion).
+  - **Resilience:** Fail-open design (gracefully bypasses limiting in local/CI environments if credentials are missing).
+
 **Security boundaries**
-- `GOOGLE_GENERATIVE_AI_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are server-only; never reach Client Components.
+- `GOOGLE_GENERATIVE_AI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` are server-only; never reach Client Components.
 - All LLM/DB calls run in Server Actions or Route Handlers (`src/app/api/...`).
 - All request payloads validated with Zod before backend logic.
 - External async calls wrapped in `try/catch`; errors return `{ error: string }` (400 bad payload, 422 unresolvable query, 500 server/AI failure).
@@ -97,6 +104,28 @@ When automated verification gates (`npm test`, `npx tsc --noEmit`, `npm run lint
 
 ---
 
+## Distributed Rate Limiting Contracts
+
+### Quota Allocation by Domain Weight
+- `/api/co-builder`: 5 requests / 1 hour per IP (heavy structural synthesis)
+- `/api/search-terms`: 15 requests / 1 minute per IP (lightweight vector RAG & exact match)
+- `/api/grill/question`: 4 sessions / 1 hour per IP (deducted on `round === 1` only to protect active conversations)
+
+### Error Response Contract (HTTP 429)
+- **Status:** `429 Too Many Requests`
+- **Headers:**
+  - `Retry-After: <seconds>`
+  - `X-RateLimit-Remaining: <count>`
+- **Body Schema:**
+  ```json
+  {
+    "error": string,
+    "resetInSeconds": number
+  }
+  ```
+
+---
+
 ## 4. Completed Milestones & Changelog
 
 - **v1.0.0 — MVP release.**
@@ -127,6 +156,7 @@ When automated verification gates (`npm test`, `npx tsc --noEmit`, `npm run lint
   2. **App Router Route Handler Export Boundaries (`src/lib/prompts.ts`, `src/app/api/`):** Resolved TS2344 route typing compilation error. App Router `route.ts` files must strictly export HTTP verbs; helper utilities (`getStressTestSystemPrompt`, `sanitizeCoBuilderPrompt`, `getGrillQuestionSystemPrompt`) were extracted into a dedicated `src/lib/prompts.ts` module.
   3. **Webpack Production Build (`package.json`):** Updated `"build": "next build --webpack"` to bypass experimental Turbopack child-process IPC panics on CSS evaluation. 100% verified across `npx tsc --noEmit`, `npm test`, `npm run lint`, and `npm run build`.
 - **Dynamic RAG Synthesis Upsert Constraint Fix (`src/app/api/search-terms/route.ts`):** Resolved HTTP 500 error on fallback dynamic term synthesis where Supabase threw `null value in column "interview_answer" of relation "tech_terms" violates not-null constraint`. Mapped `interview_answer` with fallback guard (`interview_answer || interviewAnswer || interviewContext || definition || fallbackModelAnswer`) alongside `definition` and `interview_context`, and updated logging to `console.error('[search-terms upsert error]', upsertError)`. Live-verified via dev server with dynamic indexing of term `"Docker"` returning HTTP 200 (`autoIndexed: true`) and subsequent cache hit (`autoIndexed: false`).
+- **v1.1.x Pre-Launch Hardening — Upstash Redis Rate Limiting & Abuse Prevention (`src/lib/ratelimit.ts`, `src/app/api/`, `src/app/page.tsx`, `src/__tests__/ratelimit.test.ts`):** Installed `@upstash/ratelimit` and `@upstash/redis` and implemented lazy Redis initialization (`null` when `UPSTASH_REDIS_REST_URL` or `UPSTASH_REDIS_REST_TOKEN` are missing) with fail-open resilience (`checkRateLimit` returns `{ success: true, remaining: 999, resetInSeconds: 0 }` in local/CI environments). Exported 3 sliding-window limiters (`stressTestLimiter`: 5/1h, `ragExplainerLimiter`: 15/1m, `grillLimiter`: 4/1h) and `getClientIp`. Protected `POST /api/co-builder`, `POST /api/search-terms`, and `POST /api/grill/question` (deducting quota on `round === 1` only) with RFC-compliant HTTP 429 responses (`Retry-After`, `X-RateLimit-Remaining`, `{ error, resetInSeconds }`). Added a frontend HTTP 429 interceptor and dismissible Amber/Orange cooldown banner (`"Cooldown active: Resets in ~X min(s)"`) in `src/app/page.tsx` that resets loading spinners immediately. Added unit tests in `src/__tests__/ratelimit.test.ts`.
 
 ---
 
@@ -145,5 +175,7 @@ When automated verification gates (`npm test`, `npx tsc --noEmit`, `npm run lint
   - Replaces endless chat with a strict 3-question defense loop (`IDLE` -> `ACTIVE` [Rounds 1–3] -> `EVALUATION`) supporting `grillType: 'project'` (personal architecture defense), `grillType: 'concept'` (core engineering concept drill without project assumptions), and `grillType: 'jd'` (target Job Description / role interview).
   - Terminates after 3 answers and generates a structured evaluation card featuring a side-by-side diff: **"What Was Missing"** vs. **"Senior Spoken Rewrite"** (first-person, concise, <3 sentences).
 - **v1.1.0 Feature 4 (Completed — Step 3 + Context Calibration):** One-Click Pipeline Integration.
-  - Connects Module 1 (Stress-Tester), Module 2 (RAG Explainer), and Module 3 (3-Round Grill) via one-click action buttons (`"🔥 Practice Defending This Stack (Start 3-Round Grill)"` with `grillType: 'project'`, `"🎯 Practice Interview for This Role (Start 3-Round Grill)"` with `grillType: 'jd'`, `"🎯 Grill Me on This Concept"` with `grillType: 'concept'`, and `"🔍 Look up in RAG Knowledge Base"`) so users never have to copy-paste prompts. Next: Milestone v1.1.0 release (`ship-release`) / v2.0.0 Platform Scale.
+  - Connects Module 1 (Stress-Tester), Module 2 (RAG Explainer), and Module 3 (3-Round Grill) via one-click action buttons (`"🔥 Practice Defending This Stack (Start 3-Round Grill)"` with `grillType: 'project'`, `"🎯 Practice Interview for This Role (Start 3-Round Grill)"` with `grillType: 'jd'`, `"🎯 Grill Me on This Concept"` with `grillType: 'concept'`, and `"🔍 Look up in RAG Knowledge Base"`) so users never have to copy-paste prompts.
+- **v1.1.x Pre-Launch Hardening (Completed):**
+  - **Upstash Redis Rate Limiting & Abuse Prevention:** Sliding window distributed rate limiting (`@upstash/ratelimit`, `@upstash/redis`) over stateless HTTP/REST with fail-open fallback across `/api/co-builder`, `/api/search-terms`, and `/api/grill/question` (deducted on `round === 1` only), standardized HTTP 429 response contract (`Retry-After`, `X-RateLimit-Remaining`, `{ error, resetInSeconds }`), and frontend cooldown alert banner. Next: Milestone v1.1.0 release (`ship-release`).
 - **v2.0.0** — Platform Scale.

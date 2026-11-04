@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import {
   Check,
+  Clock,
   Copy,
   Search,
   Loader2,
@@ -161,8 +162,12 @@ export default function PrepPilotDashboard() {
   const [isGrillLoading, setIsGrillLoading] = useState<boolean>(false);
   const [grillError, setGrillError] = useState<string | null>(null);
 
-  // Shared Clipboard State
+  // Shared Clipboard & Rate Limit Notice State
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [rateLimitNotice, setRateLimitNotice] = useState<{
+    message: string;
+    resetInSeconds: number;
+  } | null>(null);
 
   const handleCopy = async (text: string, id: string) => {
     try {
@@ -239,6 +244,21 @@ export default function PrepPilotDashboard() {
       });
 
       const data = await response.json();
+
+      if (response.status === 429) {
+        setRateLimitNotice({
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : "Rate limit exceeded. Please wait before trying again.",
+          resetInSeconds:
+            typeof data?.resetInSeconds === "number" ? data.resetInSeconds : 60,
+        });
+        setIsLoading(false);
+        setIsSearching(false);
+        setIsGrillLoading(false);
+        return;
+      }
 
       if (!response.ok || typeof data?.question !== "string") {
         setGrillError(
@@ -362,6 +382,21 @@ export default function PrepPilotDashboard() {
 
       const data = await response.json();
 
+      if (response.status === 429) {
+        setRateLimitNotice({
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : "Rate limit exceeded. Please wait before trying again.",
+          resetInSeconds:
+            typeof data?.resetInSeconds === "number" ? data.resetInSeconds : 60,
+        });
+        setIsLoading(false);
+        setIsSearching(false);
+        setIsGrillLoading(false);
+        return;
+      }
+
       if (!response.ok || !Array.isArray(data?.questionBreakdowns)) {
         setGrillError(
           typeof data?.error === "string"
@@ -428,6 +463,21 @@ export default function PrepPilotDashboard() {
 
       const data = await response.json();
 
+      if (response.status === 429) {
+        setRateLimitNotice({
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : "Rate limit exceeded. Please wait before trying again.",
+          resetInSeconds:
+            typeof data?.resetInSeconds === "number" ? data.resetInSeconds : 60,
+        });
+        setIsLoading(false);
+        setIsSearching(false);
+        setIsGrillLoading(false);
+        return;
+      }
+
       if (!response.ok) {
         setError(
           typeof data?.error === "string"
@@ -437,6 +487,7 @@ export default function PrepPilotDashboard() {
         return;
       }
 
+      setRateLimitNotice(null);
       setDefense(data as ProjectDefense);
     } catch {
       setError("Network error while connecting to PrepPilot server.");
@@ -468,6 +519,21 @@ export default function PrepPilotDashboard() {
       });
 
       const data = await response.json();
+
+      if (response.status === 429) {
+        setRateLimitNotice({
+          message:
+            typeof data?.error === "string"
+              ? data.error
+              : "Rate limit exceeded. Please wait before trying again.",
+          resetInSeconds:
+            typeof data?.resetInSeconds === "number" ? data.resetInSeconds : 60,
+        });
+        setIsLoading(false);
+        setIsSearching(false);
+        setIsGrillLoading(false);
+        return;
+      }
 
       if (response.status === 422) {
         setRejectedReason(
@@ -567,6 +633,36 @@ export default function PrepPilotDashboard() {
 
       {/* Main Content Area */}
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6 sm:py-14">
+        {rateLimitNotice && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            className="mb-6 flex items-start justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3.5 text-amber-200 shadow-sm"
+          >
+            <div className="flex items-start gap-3">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+              <div className="space-y-1 text-xs sm:text-sm">
+                <p className="font-medium text-amber-100">
+                  {rateLimitNotice.message}
+                </p>
+                <p className="font-mono text-xs text-amber-300/90">
+                  Cooldown active: Resets in ~
+                  {Math.max(1, Math.ceil(rateLimitNotice.resetInSeconds / 60))}{" "}
+                  min(s)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRateLimitNotice(null)}
+              aria-label="Dismiss rate limit notice"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-amber-300 transition hover:bg-amber-900/50 hover:text-amber-100"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {activeTab === "stress-tester" ? (
           <div className="space-y-8">
             {/* Header Description */}

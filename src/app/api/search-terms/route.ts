@@ -14,6 +14,11 @@ import {
   QUOTA_EXHAUSTED_ERROR_MESSAGE,
   runWithGeminiFallback,
 } from "@/lib/gemini";
+import {
+  ragExplainerLimiter,
+  getClientIp,
+  checkRateLimit,
+} from "@/lib/ratelimit";
 
 export interface MatchedTechTerm {
   id: number | string;
@@ -134,7 +139,30 @@ function createAdminSupabaseClient() {
 }
 
 export async function POST(req: NextRequest) {
-  // TODO(security): Enforce user authentication and per-IP/per-user rate limiting in production.
+  const clientIp = getClientIp(req);
+  const { success, remaining, resetInSeconds } = await checkRateLimit(
+    ragExplainerLimiter,
+    clientIp
+  );
+
+  if (!success) {
+    return NextResponse.json(
+      {
+        error:
+          "Rate limit exceeded: Maximum 15 concept lookups per minute reached. Please slow down.",
+        resetInSeconds,
+      },
+      {
+        status: 429,
+        headers: {
+          ...SECURITY_HEADERS,
+          "Retry-After": String(resetInSeconds),
+          "X-RateLimit-Remaining": String(remaining),
+        },
+      }
+    );
+  }
+
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return NextResponse.json(
       {
