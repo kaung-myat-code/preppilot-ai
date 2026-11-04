@@ -172,6 +172,9 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
   - Sends output from the Stress-Tester and Concept Explainer straight into the 3-Round Grill, with zero copy-pasting.
 - [x] **Resilient Gemini Fallback Cascade:**
   - Active Google AI Studio rate-limit model cascade (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3-flash-preview`, `gemini-2.5-flash`) with `maxRetries: 0`, 12-second abort timeouts, and immediate failover on 429/404 errors.
+- [x] **Rate Limiting & Abuse Prevention (Upstash Redis):**
+  - Distributed sliding-window rate limiting via Upstash Serverless Redis (`@upstash/ratelimit`, `@upstash/redis`) over stateless HTTP/REST with fail-open resilience.
+  - Domain-weighted quotas across `/api/co-builder` (5/hr), `/api/search-terms` (15/min), and `/api/grill/question` (4 sessions/hr, deducted on `round === 1` only) with RFC-compliant HTTP 429 headers (`Retry-After`, `X-RateLimit-Remaining`) and a frontend cooldown alert banner.
 
 ---
 
@@ -185,10 +188,6 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - [ ] **Voice-to-Voice Mock Defense Studio:**
   - In-browser Web Speech API (and Whisper STT fallback) for real-time verbal answers.
   - Low-latency Text-to-Speech (TTS) audio streaming for the interviewer voice to simulate realistic phone screens.
-
-- [ ] **Rate Limiting & Abuse Prevention:**
-  - IP-based and user-based token bucket rate limiting via Upstash Redis (`@upstash/ratelimit`) on generative endpoints (`/api/chat`, `/api/search-terms`).
-  - Quota management to protect Gemini 2.5 Flash and embedding API consumption.
 
 - [ ] **Community Interview Defense Packets:**
   - Public shareable URLs for candidate interview scorecards and project defense summaries.
